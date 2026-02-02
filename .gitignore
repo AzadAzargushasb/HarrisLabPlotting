@@ -49,3 +49,6 @@ Thumbs.db
 # Output files
 *.html
 *.pkl
+
+# Old/backup files
+_old_files/
