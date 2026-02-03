@@ -1,7 +1,8 @@
 """
 Brain Connectivity Visualization
 ================================
-Basic brain connectivity visualization functions.
+Brain connectivity visualization functions with camera controls.
+Version 2 features: Camera controls, toggleable positive/negative edges.
 """
 
 import pandas as pd
@@ -11,10 +12,11 @@ import plotly.graph_objects as go
 import plotly.express as px
 from pathlib import Path
 import colorsys
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
-# Import shared mesh loader from package
+# Import shared modules from package
 from .mesh import load_mesh_file
+from .camera import CameraController
 
 
 def create_brain_connectivity_plot(
@@ -34,7 +36,11 @@ def create_brain_connectivity_plot(
     mesh_color='lightgray',
     mesh_opacity=0.5,
     label_font_size=8,
-    fast_render=False
+    fast_render=False,
+    camera_view: str = 'oblique',
+    custom_camera: Optional[Dict] = None,
+    enable_camera_controls: bool = True,
+    show_only_connected_nodes: bool = True
 ):
     """
     Create an interactive 3D brain connectivity visualization.
@@ -77,6 +83,17 @@ def create_brain_connectivity_plot(
         Font size for ROI labels
     fast_render : bool, optional
         If True, uses optimizations for faster rendering
+    camera_view : str, optional
+        Camera view preset name (default 'oblique'). Options include:
+        'anterior', 'posterior', 'left', 'right', 'superior', 'inferior',
+        'oblique', 'anterolateral_left', 'anterolateral_right', etc.
+    custom_camera : dict, optional
+        Custom camera position dict with 'eye', 'center', 'up' keys
+    enable_camera_controls : bool, optional
+        Whether to enable camera view dropdown controls (default True)
+    show_only_connected_nodes : bool, optional
+        If True (default), only show nodes that have at least one edge.
+        If False, show all nodes including isolated ones.
 
     Returns
     -------
@@ -151,9 +168,8 @@ def create_brain_connectivity_plot(
 
         return (pos_x, pos_y, pos_z, pos_hover), (neg_x, neg_y, neg_z, neg_hover)
 
-    # Prepare edges for both graphs
+    # Prepare edges (same for all nodes and connected-only since isolated nodes have no edges)
     pos_all, neg_all = prepare_edges_consolidated(G_all)
-    pos_conn, neg_conn = prepare_edges_consolidated(G_connected)
 
     # Create figure
     fig = go.Figure()
@@ -174,7 +190,11 @@ def create_brain_connectivity_plot(
         lighting=dict(ambient=0.8) if fast_render else None
     ))
 
-    # Add consolidated edge traces
+    # Count edges for legend labels
+    pos_edge_count_all = len([i for i in range(0, len(pos_all[0]), 3) if pos_all[0][i] is not None]) if pos_all[0] else 0
+    neg_edge_count_all = len([i for i in range(0, len(neg_all[0]), 3) if neg_all[0][i] is not None]) if neg_all[0] else 0
+
+    # Add consolidated edge traces with legend entries for toggling
     if pos_all[0]:
         fig.add_trace(go.Scatter3d(
             x=pos_all[0],
@@ -185,9 +205,10 @@ def create_brain_connectivity_plot(
             opacity=0.6,
             hoverinfo='text',
             hovertext=pos_all[3],
-            showlegend=False,
+            showlegend=True,
             visible=True,
-            name='pos_edges_all'
+            name=f'Positive Edges ({pos_edge_count_all})',
+            legendgroup='pos_edges'
         ))
 
     if neg_all[0]:
@@ -200,42 +221,13 @@ def create_brain_connectivity_plot(
             opacity=0.6,
             hoverinfo='text',
             hovertext=neg_all[3],
-            showlegend=False,
+            showlegend=True,
             visible=True,
-            name='neg_edges_all'
+            name=f'Negative Edges ({neg_edge_count_all})',
+            legendgroup='neg_edges'
         ))
 
-    if pos_conn[0]:
-        fig.add_trace(go.Scatter3d(
-            x=pos_conn[0],
-            y=pos_conn[1],
-            z=pos_conn[2],
-            mode='lines',
-            line=dict(color=pos_edge_color, width=edge_width),
-            opacity=0.6,
-            hoverinfo='text',
-            hovertext=pos_conn[3],
-            showlegend=False,
-            visible=False,
-            name='pos_edges_conn'
-        ))
-
-    if neg_conn[0]:
-        fig.add_trace(go.Scatter3d(
-            x=neg_conn[0],
-            y=neg_conn[1],
-            z=neg_conn[2],
-            mode='lines',
-            line=dict(color=neg_edge_color, width=edge_width),
-            opacity=0.6,
-            hoverinfo='text',
-            hovertext=neg_conn[3],
-            showlegend=False,
-            visible=False,
-            name='neg_edges_conn'
-        ))
-
-    # Add nodes with labels - All nodes
+    # Add nodes with labels - All nodes (shown when show_only_connected_nodes=False)
     node_x_all = [G_all.nodes[i]['x'] for i in G_all.nodes()]
     node_y_all = [G_all.nodes[i]['y'] for i in G_all.nodes()]
     node_z_all = [G_all.nodes[i]['z'] for i in G_all.nodes()]
@@ -258,11 +250,11 @@ def create_brain_connectivity_plot(
         hoverinfo='text',
         hovertext=node_labels_all,
         showlegend=False,
-        visible=True,
+        visible=not show_only_connected_nodes,
         name='nodes_all'
     ))
 
-    # Connected nodes only
+    # Connected nodes only (shown when show_only_connected_nodes=True, which is the default)
     node_x_conn = [G_connected.nodes[i]['x'] for i in G_connected.nodes()]
     node_y_conn = [G_connected.nodes[i]['y'] for i in G_connected.nodes()]
     node_z_conn = [G_connected.nodes[i]['z'] for i in G_connected.nodes()]
@@ -285,11 +277,67 @@ def create_brain_connectivity_plot(
         hoverinfo='text',
         hovertext=node_labels_conn,
         showlegend=False,
-        visible=False,
+        visible=show_only_connected_nodes,
         name='nodes_conn'
     ))
 
-    # Update layout
+    # Set camera position
+    if custom_camera is not None:
+        camera = custom_camera
+    else:
+        camera = CameraController.get_camera_position(camera_view)
+
+    # Add camera view to title
+    if 'name' in camera:
+        full_title = f"{plot_title}<br><i>View: {camera['name']}</i>"
+    else:
+        full_title = plot_title
+
+    # Camera control instructions
+    camera_control_text = ""
+    if enable_camera_controls:
+        camera_control_text = (
+            "<b>Camera Controls:</b><br>"
+            "* Drag to rotate<br>"
+            "* Scroll to zoom<br>"
+            "* Right-click drag to pan<br>"
+            "* Double-click to reset"
+        )
+
+    # Build camera preset buttons if enabled
+    updatemenus = []
+    if enable_camera_controls:
+        camera_buttons = []
+        for view_key, view_data in CameraController.PRESET_VIEWS.items():
+            if view_key != 'custom':
+                camera_buttons.append(
+                    dict(
+                        args=[{'scene.camera': {
+                            'eye': view_data['eye'],
+                            'center': view_data['center'],
+                            'up': view_data['up']
+                        }}],
+                        label=view_data['name'],
+                        method='relayout'
+                    )
+                )
+
+        updatemenus = [
+            dict(
+                type='dropdown',
+                showactive=True,
+                buttons=camera_buttons,
+                x=0.01,
+                xanchor='left',
+                y=0.99,
+                yanchor='top',
+                bgcolor='rgba(255, 255, 255, 0.9)',
+                bordercolor='black',
+                borderwidth=1
+            )
+        ]
+
+    # Update layout with camera controls
     fig.update_layout(
         scene=dict(
             xaxis=dict(showgrid=False, zeroline=False, visible=False),
@@ -297,9 +345,9 @@ def create_brain_connectivity_plot(
             zaxis=dict(showgrid=False, zeroline=False, visible=False),
             bgcolor='white',
             camera=dict(
-                eye=dict(x=1.5, y=1.5, z=1.5),
-                center=dict(x=0, y=0, z=0),
-                up=dict(x=0, y=0, z=1)
+                eye=camera['eye'],
+                center=camera['center'],
+                up=camera['up']
             ),
             dragmode='orbit',
             aspectmode='data'
@@ -307,11 +355,44 @@ def create_brain_connectivity_plot(
         width=1200,
         height=900,
         title={
-            'text': plot_title,
+            'text': full_title,
             'x': 0.5,
             'xanchor': 'center',
             'font': dict(size=20)
-        }
+        },
+        showlegend=True,
+        legend=dict(
+            x=0.01,
+            y=0.85,
+            bgcolor='rgba(255,255,255,0.9)',
+            bordercolor='black',
+            borderwidth=1
+        ),
+        updatemenus=updatemenus,
+        annotations=[
+            dict(
+                text=camera_control_text,
+                showarrow=False,
+                xref="paper", yref="paper",
+                x=0.01, y=0.50,
+                xanchor="left",
+                yanchor="top",
+                font=dict(size=10),
+                bgcolor='rgba(255,255,255,0.9)' if camera_control_text else 'rgba(255,255,255,0)',
+                bordercolor='black' if camera_control_text else 'rgba(0,0,0,0)',
+                borderwidth=1 if camera_control_text else 0,
+                borderpad=4
+            ),
+            dict(
+                text=f"V2: Camera controls enabled" if enable_camera_controls else "",
+                showarrow=False,
+                xref="paper", yref="paper",
+                x=0.99, y=0.01,
+                xanchor="right",
+                yanchor="bottom",
+                font=dict(size=11, color='gray')
+            )
+        ]
     )
 
     # Save the figure
