@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "HarrisLabPlotting"
+version = "1.0.0"
+description = "Brain connectivity and modularity visualization tools for neuroscience research"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Harris Lab"}
+]
+keywords = ["neuroscience", "brain", "connectivity", "visualization", "plotly", "modularity", "fMRI"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "numpy>=1.21",
+    "pandas>=1.3",
+    "scipy>=1.7",
+    "nibabel>=4.0",
+    "networkx>=2.6",
+    "plotly>=5.0",
+    "click>=8.0",
+    "pyyaml>=6.0",
+    "rich>=12.0",
+    "kaleido>=0.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "black", "flake8", "mypy"]
+jupyter = ["jupyter", "jupyterlab"]
+
+[project.scripts]
+hlplot = "HarrisLabPlotting.cli.main:cli"
+
+[project.urls]
+Homepage = "https://github.com/harrislabcodebase/HarrisLabPlotting"
+Documentation = "https://github.com/harrislabcodebase/HarrisLabPlotting/tree/main/tutorial"
+Repository = "https://github.com/harrislabcodebase/HarrisLabPlotting"
+Issues = "https://github.com/harrislabcodebase/HarrisLabPlotting/issues"
+
+[tool.setuptools]
+packages = ["HarrisLabPlotting", "HarrisLabPlotting.cli", "HarrisLabPlotting.cli.commands"]
+package-dir = {"HarrisLabPlotting" = "."}
+
+[tool.setuptools.package-data]
+HarrisLabPlotting = ["*.yaml", "*.yml"]

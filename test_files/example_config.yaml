@@ -1,0 +1,48 @@
+# HarrisLabPlotting Configuration File
+# =====================================
+# This file configures the hlplot command-line tool.
+# All paths can be absolute or relative to the config file location.
+
+# Input files (required for plotting)
+mesh_file: "data/brain.gii"
+roi_coords_file: "data/roi_coordinates.csv"
+connectivity_matrix: "data/connectivity_matrix.npy"
+
+# Output settings
+output_dir: "./outputs"
+output_format: "html"  # Options: html, png, pdf, svg, jpeg, webp
+
+# Plot settings
+plot:
+  title: "Brain Connectivity Visualization"
+  node_size: 10                    # Size of ROI nodes
+  node_color: "purple"             # Color or path to color vector file
+  edge_threshold: 0.1              # Minimum edge weight to display
+  edge_width_range: [1, 5]         # Min and max edge widths
+  opacity: 0.3                     # Brain mesh opacity (0-1)
+
+# Camera settings
+camera:
+  view: "anterior"  # Options: anterior, posterior, lateral-left, lateral-right, superior, inferior
+  # Or specify custom camera position:
+  # eye: [0, 2, 0]
+  # center: [0, 0, 0]
+  # up: [0, 0, 1]
+
+# Modularity settings (optional)
+modularity:
+  enabled: false
+  module_file: "data/module_assignments.csv"
+  edge_color_mode: "module"        # Options: module, sign
+  q_score: null                    # Modularity Q score (for title)
+  z_score: null                    # Z-rand score (for title)
+
+# Batch processing (optional)
+# Uncomment to process multiple subjects:
+# batch:
+#   - name: "subject_01"
+#     matrix: "data/sub01_connectivity.npy"
+#     modules: "data/sub01_modules.csv"
+#   - name: "subject_02"
+#     matrix: "data/sub02_connectivity.npy"
+#     modules: "data/sub02_modules.csv"

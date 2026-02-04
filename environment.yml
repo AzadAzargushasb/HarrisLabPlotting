@@ -14,4 +14,7 @@ dependencies:
   - jupyterlab
   - pip
   - pip:
-    - kaleido  # For static image export from plotly
+    - kaleido       # For static image export from plotly
+    - click>=8.0    # CLI framework
+    - pyyaml>=6.0   # YAML configuration support
+    - rich>=12.0    # Rich console output
