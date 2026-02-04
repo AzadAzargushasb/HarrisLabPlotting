@@ -62,7 +62,15 @@ from .utils import (
     calculate_node_size,
     calculate_edge_width,
     filter_edges_by_module,
-    threshold_matrix_top_n
+    threshold_matrix_top_n,
+    load_node_file,
+    load_edge_file,
+    node_edge_to_roi_matrix,
+    convert_node_size_input,
+    convert_node_color_input,
+    generate_module_colors,
+    load_connectivity_input,
+    load_node_metrics
 )
 
 # Data loaders
@@ -72,7 +80,7 @@ from .loaders import NetNeurotoolsModularityLoader
 from .connectivity import (
     create_brain_connectivity_plot,
     quick_brain_plot,
-    create_simple_modularity_visualization
+    create_brain_connectivity_plot_with_modularity
 )
 
 # Enhanced modularity visualization
@@ -109,6 +117,14 @@ __all__ = [
     "calculate_edge_width",
     "filter_edges_by_module",
     "threshold_matrix_top_n",
+    "load_node_file",
+    "load_edge_file",
+    "node_edge_to_roi_matrix",
+    "convert_node_size_input",
+    "convert_node_color_input",
+    "generate_module_colors",
+    "load_connectivity_input",
+    "load_node_metrics",
 
     # Loaders
     "NetNeurotoolsModularityLoader",
@@ -116,7 +132,7 @@ __all__ = [
     # Connectivity
     "create_brain_connectivity_plot",
     "quick_brain_plot",
-    "create_simple_modularity_visualization",
+    "create_brain_connectivity_plot_with_modularity",
 
     # Modularity
     "create_enhanced_modularity_visualization",

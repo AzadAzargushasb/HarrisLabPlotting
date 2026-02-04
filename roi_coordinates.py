@@ -151,8 +151,13 @@ def map_coordinate(original_coords_file, reduced_roi_file, save_directory=".", n
     ----------
     original_coords_file : str or pd.DataFrame
         Path to file containing full ROI coordinates (pickle, CSV) or DataFrame
-    reduced_roi_file : str
-        Path to text/CSV file containing the subset of ROIs to map
+    reduced_roi_file : str or pd.DataFrame
+        Path to text/CSV/node file OR DataFrame containing the subset of ROIs to map.
+        Supports:
+        - Text file with ROI names (one per line or tab-delimited index\\tname)
+        - CSV file with ROI names
+        - BrainNet Viewer .node file (uses last column as ROI names)
+        - DataFrame with 'roi_name' column (e.g., from load_node_file())
     save_directory : str, optional
         Directory where files will be saved
     name_of_file : str, optional
@@ -166,7 +171,7 @@ def map_coordinate(original_coords_file, reduced_roi_file, save_directory=".", n
     """
 
     print(f"Mapping coordinates from: {original_coords_file}")
-    print(f"Using reduced ROI list from: {reduced_roi_file}")
+    print(f"Using reduced ROI list from: {type(reduced_roi_file).__name__ if isinstance(reduced_roi_file, pd.DataFrame) else reduced_roi_file}")
 
     if name_of_file is None:
         name_of_file = "mapped_roi_coordinates"
@@ -204,24 +209,57 @@ def map_coordinate(original_coords_file, reduced_roi_file, save_directory=".", n
             roi_map[roi_name] = row
 
         reduced_rois = []
-        with open(reduced_roi_file, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
 
-                if '\t' in line:
-                    parts = line.split('\t', 1)
-                    if len(parts) == 2:
-                        reduced_rois.append(parts[1].strip())
-                elif ',' in line and not line.startswith('roi_'):
-                    parts = line.split(',', 1)
-                    if len(parts) == 2 and not parts[0].startswith('roi_'):
-                        reduced_rois.append(parts[1].strip())
-                else:
-                    reduced_rois.append(line)
+        # Check if reduced_roi_file is a DataFrame (e.g., from load_node_file())
+        if isinstance(reduced_roi_file, pd.DataFrame):
+            # Extract ROI names from DataFrame
+            if 'roi_name' in reduced_roi_file.columns:
+                reduced_rois = reduced_roi_file['roi_name'].astype(str).str.strip().tolist()
+            else:
+                raise ValueError("DataFrame must have 'roi_name' column. "
+                               f"Available columns: {reduced_roi_file.columns.tolist()}")
+            print(f"Loaded {len(reduced_rois)} ROIs from DataFrame")
+        else:
+            # It's a file path
+            reduced_file_path = Path(reduced_roi_file)
 
-        print(f"Loaded {len(reduced_rois)} ROIs from reduced list")
+            # Check if it's a .node file (BrainNet Viewer format)
+            if reduced_file_path.suffix.lower() == '.node':
+                # Node file format: X Y Z size color roi_name (tab-separated)
+                # Extract the last column (roi_name)
+                with open(reduced_roi_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        parts = line.split('\t')
+                        if len(parts) >= 6:
+                            # Last column is roi_name
+                            reduced_rois.append(parts[-1].strip())
+                        elif len(parts) >= 1:
+                            # Fallback: use last part
+                            reduced_rois.append(parts[-1].strip())
+                print(f"Loaded {len(reduced_rois)} ROIs from .node file (last column)")
+            else:
+                # Standard text/CSV file handling
+                with open(reduced_roi_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+
+                        if '\t' in line:
+                            parts = line.split('\t', 1)
+                            if len(parts) == 2:
+                                reduced_rois.append(parts[1].strip())
+                        elif ',' in line and not line.startswith('roi_'):
+                            parts = line.split(',', 1)
+                            if len(parts) == 2 and not parts[0].startswith('roi_'):
+                                reduced_rois.append(parts[1].strip())
+                        else:
+                            reduced_rois.append(line)
+
+                print(f"Loaded {len(reduced_rois)} ROIs from reduced list")
 
         mapped_results = []
         unmapped_rois = []
