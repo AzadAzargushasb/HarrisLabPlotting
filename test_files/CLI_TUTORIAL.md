@@ -152,10 +152,10 @@ Summary: Successfully mapped 28 out of 28 ROIs
 All ROIs were successfully mapped!
 ```
 
-Creates:
-- `output/atlas_28_mapped_comma.csv`
-- `output/atlas_28_mapped_tab.csv`
-- `output/atlas_28_mapped.pkl`
+Creates (in a subdirectory with the same name):
+- `output/atlas_28_mapped/atlas_28_mapped_comma.csv`
+- `output/atlas_28_mapped/atlas_28_mapped_tab.csv`
+- `output/atlas_28_mapped/atlas_28_mapped.pkl`
 
 ### Flag Explanations
 
@@ -197,7 +197,7 @@ hlplot coords map-subset \
 ```bash
 hlplot plot \
   --mesh brain_mesh.gii \
-  --coords output/atlas_28_mapped_comma.csv \
+  --coords output/atlas_28_mapped/atlas_28_mapped_comma.csv \
   --matrix node_edge_28/connectivity_28.edge \
   --output output/test1_basic_28roi.html \
   --title "28-ROI Brain Connectivity Network" \
@@ -306,7 +306,7 @@ hlplot utils info --matrix k5_state_0/connectivity_matrix.csv
 ```bash
 hlplot utils validate \
   --mesh brain_mesh.gii \
-  --coords output/atlas_28_mapped_comma.csv \
+  --coords output/atlas_28_mapped/atlas_28_mapped_comma.csv \
   --matrix node_edge_28/connectivity_28.edge
 ```
 
@@ -410,7 +410,7 @@ For publication figures where you add your own caption.
 ```bash
 hlplot plot \
   --mesh brain_mesh.gii \
-  --coords output/atlas_28_mapped_comma.csv \
+  --coords output/atlas_28_mapped/atlas_28_mapped_comma.csv \
   --matrix node_edge_28/connectivity_28.edge \
   --output output/test6a_clean.html \
   --title "This title will NOT appear" \
@@ -426,7 +426,7 @@ hlplot plot \
 ```bash
 hlplot plot \
   --mesh brain_mesh.gii \
-  --coords output/atlas_28_mapped_comma.csv \
+  --coords output/atlas_28_mapped/atlas_28_mapped_comma.csv \
   --matrix node_edge_28/connectivity_28.edge \
   --output output/test6b_title_only.html \
   --title "Brain Connectivity Network" \
@@ -440,7 +440,7 @@ hlplot plot \
 ```bash
 hlplot plot \
   --mesh brain_mesh.gii \
-  --coords output/atlas_28_mapped_comma.csv \
+  --coords output/atlas_28_mapped/atlas_28_mapped_comma.csv \
   --matrix node_edge_28/connectivity_28.edge \
   --output output/test6c_clean.html \
   --camera left \
@@ -467,7 +467,7 @@ Nodes can be toggled along with their edges in the interactive legend.
 ```bash
 hlplot plot \
   --mesh brain_mesh.gii \
-  --coords output/atlas_28_mapped_comma.csv \
+  --coords output/atlas_28_mapped/atlas_28_mapped_comma.csv \
   --matrix node_edge_28/connectivity_28.edge \
   --output output/test7_node_visibility.html \
   --title "Node Visibility with Edge Toggle" \
@@ -720,7 +720,7 @@ hlplot coords map-subset \
 # 4. Create basic visualization
 hlplot plot \
   --mesh brain_mesh.gii \
-  --coords output/atlas_28_comma.csv \
+  --coords output/atlas_28/atlas_28_comma.csv \
   --matrix node_edge_28/connectivity_28.edge \
   --output output/brain_28.html \
   --title "28-ROI Brain Network"
@@ -735,7 +735,7 @@ hlplot coords map-subset \
 # 6. Create modularity visualization
 hlplot modular \
   --mesh brain_mesh.gii \
-  --coords output/atlas_114_comma.csv \
+  --coords output/atlas_114/atlas_114_comma.csv \
   --matrix k5_state_0/connectivity_matrix.csv \
   --modules k5_state_0/module_assignments.csv \
   --output output/modularity_114.html \
@@ -746,7 +746,7 @@ hlplot modular \
 # 7. Export publication figure
 hlplot plot \
   --mesh brain_mesh.gii \
-  --coords output/atlas_114_comma.csv \
+  --coords output/atlas_114/atlas_114_comma.csv \
   --matrix k5_state_0/connectivity_matrix.csv \
   --output output/publication.html \
   --node-color k5_state_0/module_assignments.csv \
