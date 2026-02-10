@@ -263,3 +263,145 @@ def coords_extract(file, output, method):
     except Exception as e:
         print_error(f"Error extracting coordinates: {e}")
         raise click.Abort()
+
+
+@coords.command("generate")
+@click.option("--volume", "-v", required=True, type=click.Path(exists=True),
+              help="Path to NIfTI volume file containing ROI labels.")
+@click.option("--labels", "-l", required=True, type=click.Path(exists=True),
+              help="Path to text file containing ROI labels (tab-delimited: number\\tlabel).")
+@click.option("--output-dir", "-o", required=True, type=click.Path(),
+              help="Directory where output files will be saved.")
+@click.option("--name", "-n", default="roi_coordinates",
+              help="Name for the output files (without extension).")
+def coords_generate(volume, labels, output_dir, name):
+    """
+    Generate ROI coordinates from a NIfTI volume file with labels.
+
+    This command extracts center-of-gravity (COG) coordinates for each ROI
+    defined in the volume file, using the provided label file for ROI names.
+
+    \b
+    Output files:
+      - {name}_comma.csv: Comma-delimited CSV
+      - {name}_tab.csv: Tab-delimited CSV
+      - {name}.pkl: Pickle file for Python
+
+    \b
+    Label file format (tab-delimited):
+      1\\tROI_Name_1
+      2\\tROI_Name_2
+      ...
+
+    \b
+    Examples:
+      # Generate coordinates from a 170-ROI atlas
+      hlplot coords generate \\
+        --volume brain_atlas.nii.gz \\
+        --labels roi_labels.txt \\
+        --output-dir ./coordinates \\
+        --name atlas_170_coordinates
+
+    \b
+    Pipeline Usage:
+      This is typically the FIRST step after obtaining a NIfTI volume file.
+      Use the generated coordinates with 'hlplot plot' or 'hlplot modular'.
+    """
+    try:
+        from HarrisLabPlotting import coordinate_function
+
+        print_info(f"Generating coordinates from volume: {volume}")
+        print_info(f"Using labels from: {labels}")
+        print_info(f"Output directory: {output_dir}")
+
+        # Call the coordinate_function
+        df = coordinate_function(
+            volume_file_location=volume,
+            roi_label_file=labels,
+            name_of_file=name,
+            save_directory=output_dir
+        )
+
+        console.print()
+        print_success(f"Generated coordinates for {len(df)} ROIs")
+        print_info(f"Output files saved to: {output_dir}")
+
+    except Exception as e:
+        print_error(f"Error generating coordinates: {e}")
+        raise click.Abort()
+
+
+@coords.command("map-subset")
+@click.option("--coords", "-c", required=True, type=click.Path(exists=True),
+              help="Path to full ROI coordinates file (CSV or pickle).")
+@click.option("--subset", "-s", required=True, type=click.Path(exists=True),
+              help="Path to subset ROI list (.node file, .txt, or .csv).")
+@click.option("--output-dir", "-o", required=True, type=click.Path(),
+              help="Directory where output files will be saved.")
+@click.option("--name", "-n", default="mapped_roi_coordinates",
+              help="Name for the output files (without extension).")
+def coords_map_subset(coords, subset, output_dir, name):
+    """
+    Map a subset of ROIs to their coordinates from a full coordinate set.
+
+    Use this when your connectivity matrix has fewer ROIs than your full atlas.
+    This command extracts only the coordinates that match your subset.
+
+    \b
+    Supported subset file formats:
+      - .node: BrainNet Viewer node file (uses last column as ROI names)
+      - .txt: Text file with ROI names (one per line, or tab-delimited: index\\tname)
+      - .csv: CSV file with 'roi_name' column
+
+    \b
+    Output files:
+      - {name}_comma.csv: Comma-delimited CSV with mapped coordinates
+      - {name}_tab.csv: Tab-delimited CSV
+      - {name}.pkl: Pickle file for Python
+
+    \b
+    Examples:
+      # Map 28 ROIs from a 170-ROI atlas using a .node file
+      hlplot coords map-subset \\
+        --coords atlas_170_coordinates.csv \\
+        --subset my_28_rois.node \\
+        --output-dir ./mapped \\
+        --name atlas_28_mapped
+
+      # Map using a text file with ROI names
+      hlplot coords map-subset \\
+        --coords atlas_170_coordinates.csv \\
+        --subset roi_subset.txt \\
+        --output-dir ./mapped
+
+    \b
+    Pipeline Usage:
+      Use this AFTER 'hlplot coords generate' when you need to work with
+      a subset of ROIs (e.g., when your connectivity matrix is smaller
+      than your full atlas).
+    """
+    try:
+        from HarrisLabPlotting import map_coordinate
+
+        print_info(f"Mapping coordinates from: {coords}")
+        print_info(f"Using subset list from: {subset}")
+        print_info(f"Output directory: {output_dir}")
+
+        # Call the map_coordinate function
+        mapped_df, unmapped_rois = map_coordinate(
+            original_coords_file=coords,
+            reduced_roi_file=subset,
+            save_directory=output_dir,
+            name_of_file=name
+        )
+
+        console.print()
+        if unmapped_rois:
+            print_warning(f"{len(unmapped_rois)} ROI(s) could not be mapped")
+        else:
+            print_success(f"Successfully mapped {len(mapped_df)} ROIs")
+        print_info(f"Output files saved to: {output_dir}")
+
+    except Exception as e:
+        print_error(f"Error mapping coordinates: {e}")
+        raise click.Abort()

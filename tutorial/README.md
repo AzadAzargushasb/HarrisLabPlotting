@@ -1,430 +1,439 @@
 # HarrisLabPlotting Tutorial
 
-A comprehensive guide to brain connectivity visualization using the `hlplot` command-line tool and Python API.
+A comprehensive guide to brain connectivity visualization using the `hlplot` command-line tool.
 
 ---
 
 ## Table of Contents
 
 1. [Installation](#1-installation)
-2. [Quick Start](#2-quick-start)
-3. [Required File Formats](#3-required-file-formats)
-4. [Working with ROI Subsets](#4-working-with-roi-subsets)
-5. [Basic Connectivity Plots](#5-basic-connectivity-plots)
-6. [Modularity Visualization](#6-modularity-visualization)
-7. [Node Customization](#7-node-customization)
-8. [Edge Customization](#8-edge-customization)
+2. [Data Pipeline Overview](#2-data-pipeline-overview)
+3. [Step 1: Creating a Brain Mesh from NIfTI](#3-step-1-creating-a-brain-mesh-from-nifti)
+4. [Step 2: Generating ROI Coordinates](#4-step-2-generating-roi-coordinates)
+5. [Step 3: Mapping ROI Subsets (Optional)](#5-step-3-mapping-roi-subsets-optional)
+6. [Step 4: Creating Connectivity Plots](#6-step-4-creating-connectivity-plots)
+7. [Modularity Visualization](#7-modularity-visualization)
+8. [Node and Edge Customization](#8-node-and-edge-customization)
 9. [Static Image Export](#9-static-image-export)
 10. [Camera Views](#10-camera-views)
-11. [Node Metrics and Hover Data](#11-node-metrics-and-hover-data)
-12. [Batch Processing](#12-batch-processing)
-13. [Python API Examples](#13-python-api-examples)
-14. [Complete Parameter Reference](#14-complete-parameter-reference)
-15. [Troubleshooting](#15-troubleshooting)
+11. [Batch Processing](#11-batch-processing)
+12. [Complete Parameter Reference](#12-complete-parameter-reference)
+13. [Troubleshooting](#13-troubleshooting)
 
 ---
 
 ## 1. Installation
 
-### Using Conda (Recommended)
+### Step 1: Clone the Repository
+
+First, download the HarrisLabPlotting package from GitHub:
 
 ```bash
-# Create environment from yml file
-conda env create -f environment.yml
-conda activate harris_lab_plotting
+git clone https://github.com/AzadAzargushasb/HarrisLabPlotting.git
+cd HarrisLabPlotting
+```
 
-# Install the package
+### Step 2: Create the Conda Environment
+
+The repository includes an `environment.yml` file with all required dependencies:
+
+```bash
+# Create the conda environment from the yml file
+conda env create -f environment.yml
+
+# Activate the environment
+conda activate harris_lab_plotting
+```
+
+### Step 3: Install the Package
+
+With the conda environment activated, install the package in development mode:
+
+```bash
 pip install -e .
 ```
 
-### Using pip
+### Step 4: Verify Installation
+
+Test that the installation was successful:
 
 ```bash
-pip install .
-```
-
-### Verify Installation
-
-```bash
+# Check version
 hlplot --version
+
+# View available commands
 hlplot --help
 ```
 
+You should see the HarrisLabPlotting CLI help with available commands.
+
 ---
 
-## 2. Quick Start
+## 2. Data Pipeline Overview
 
-### Command Line
+### What You Need
+
+To create brain connectivity visualizations, you ultimately need:
+
+1. **A brain mesh file** (.gii, .obj, .ply, .mz3) - The 3D brain surface
+2. **ROI coordinates file** (.csv) - X, Y, Z positions for each brain region
+3. **Connectivity matrix** (.npy, .csv, .edge) - Connection strengths between ROIs
+
+### Starting Point: NIfTI Volume File
+
+If you're starting from scratch, you typically have a **NIfTI volume file** (.nii or .nii.gz) containing your brain atlas/parcellation. From this single file, you can generate both:
+
+- The brain **mesh** (using external tools)
+- The ROI **coordinates** (using this package)
+
+### Complete Pipeline
+
+```
+                      ┌─────────────────────────┐
+                      │   NIfTI Volume File     │
+                      │   (brain_atlas.nii.gz)  │
+                      └───────────┬─────────────┘
+                                  │
+           ┌──────────────────────┼──────────────────────┐
+           │                      │                      │
+           ▼                      ▼                      │
+    ┌─────────────┐      ┌─────────────────┐            │
+    │ Create Mesh │      │ Generate ROI    │            │
+    │ (Surfice or │      │ Coordinates     │            │
+    │ nii2mesh)   │      │ (hlplot coords  │            │
+    └──────┬──────┘      │  generate)      │            │
+           │             └────────┬────────┘            │
+           │                      │                     │
+           │                      ▼                     │
+           │             ┌─────────────────┐            │
+           │             │ Map to Subset   │            │
+           │             │ (Optional)      │            │
+           │             │ (hlplot coords  │            │
+           │             │  map-subset)    │            │
+           │             └────────┬────────┘            │
+           │                      │                     │
+           └──────────┬───────────┘                     │
+                      │                                 │
+                      ▼                                 │
+              ┌───────────────┐     ┌───────────────┐   │
+              │  Mesh File    │     │ Connectivity  │◄──┘
+              │  (brain.gii)  │     │ Matrix        │ (your data)
+              └───────┬───────┘     └───────┬───────┘
+                      │                     │
+                      └──────────┬──────────┘
+                                 │
+                                 ▼
+                      ┌─────────────────────┐
+                      │ hlplot plot/modular │
+                      │ (Visualization)     │
+                      └─────────────────────┘
+```
+
+---
+
+## 3. Step 1: Creating a Brain Mesh from NIfTI
+
+Before you can visualize brain connectivity, you need a 3D mesh of the brain surface.
+
+**See the detailed guide:** [MESH_CREATION_GUIDE.md](MESH_CREATION_GUIDE.md)
+
+### Quick Options
+
+#### Option A: nii2mesh Web Tool (Easiest)
+
+1. Go to https://rordenlab.github.io/nii2meshWeb/
+2. Upload your NIfTI file
+3. Click "Convert" and download the mesh
+
+#### Option B: Surfice (Recommended for Quality)
+
+Download from: https://www.nitrc.org/projects/surfice/
+
+Surfice provides better control over mesh quality and smoothing.
+
+#### Option C: nii2mesh CLI (For Automation)
 
 ```bash
-# Basic connectivity plot
-hlplot plot \
-  --mesh brain.gii \
-  --coords rois.csv \
-  --matrix connectivity.npy \
-  --output my_plot.html
-
-# Modularity visualization
-hlplot modular \
-  --mesh brain.gii \
-  --coords rois.csv \
-  --matrix connectivity.npy \
-  --modules modules.csv \
-  --q-score 0.45 \
-  --output modularity.html
+# See https://github.com/neurolabusc/nii2mesh
+nii2mesh -s 3 brain_atlas.nii.gz brain_mesh.gii
 ```
 
-### Python
+### Supported Mesh Formats
 
-```python
-from HarrisLabPlotting import (
-    load_mesh_file,
-    create_brain_connectivity_plot,
-    create_brain_connectivity_plot_with_modularity
-)
-import pandas as pd
-
-# Load data
-vertices, faces = load_mesh_file("brain.gii")
-roi_df = pd.read_csv("rois.csv")
-
-# Create plot
-fig, stats = create_brain_connectivity_plot(
-    vertices=vertices,
-    faces=faces,
-    roi_coords_df=roi_df,
-    connectivity_matrix="connectivity.npy",
-    plot_title="My Brain Network"
-)
-```
+| Format | Extension | Notes |
+|--------|-----------|-------|
+| GIFTI  | .gii      | Recommended, standard neuroimaging format |
+| Wavefront OBJ | .obj | Common 3D format |
+| PLY    | .ply      | Polygon file format |
+| MZ3    | .mz3      | Surfice native format |
 
 ---
 
-## 3. Required File Formats
+## 4. Step 2: Generating ROI Coordinates
 
-### Brain Mesh File
+Once you have your NIfTI volume file, use `hlplot coords generate` to extract the center-of-gravity (COG) coordinates for each ROI.
 
-Supported formats: `.gii` (GIFTI), `.obj`, `.mz3`, `.ply`
+### Requirements
 
-The mesh defines the 3D brain surface on which nodes are displayed.
+1. **NIfTI volume file** - Your brain atlas with integer labels for each ROI
+2. **Label file** - A text file mapping ROI numbers to names
 
-### ROI Coordinates File
+### Label File Format
 
-CSV file with the following required columns:
+Create a tab-delimited text file with ROI numbers and names:
 
-| Column | Description |
-|--------|-------------|
-| `cog_x` | X coordinate (world space) |
-| `cog_y` | Y coordinate (world space) |
-| `cog_z` | Z coordinate (world space) |
-| `roi_name` | Name/label for the ROI |
+```
+1	Acumbens_left
+2	AID_left
+3	AIP_left
+4	AIV_left
+5	Amygdala_left
+...
+```
 
-Optional columns: `roi_index`, voxel coordinates, etc.
+### Generate Coordinates
 
-**Example:**
+```bash
+hlplot coords generate \
+  --volume brain_atlas.nii.gz \
+  --labels roi_labels.txt \
+  --output-dir ./roi_coordinates \
+  --name atlas_170_coordinates
+```
+
+### Output Files
+
+This creates three files in your output directory:
+
+- `atlas_170_coordinates_comma.csv` - Comma-delimited (use this for plotting)
+- `atlas_170_coordinates_tab.csv` - Tab-delimited
+- `atlas_170_coordinates.pkl` - Python pickle format
+
+### Example Output CSV
+
 ```csv
-roi_index,roi_name,cog_x,cog_y,cog_z
-1,Acumbens_left,-15.36,66.02,-20.08
-2,AID_left,-45.77,64.44,-7.54
-3,AIP_left,-61.89,29.91,-21.02
-```
-
-### Connectivity Matrix
-
-Supported formats: `.npy`, `.csv`, `.txt`, `.mat`, `.edge`
-
-- Square matrix (N x N) where N = number of ROIs
-- Values represent connection strength
-- Positive values: positive connections
-- Negative values: negative/anti-correlations
-- Zero: no connection
-
-**Important:** The matrix size must match the number of ROIs in your coordinates file!
-
-### Module Assignments File
-
-CSV or NPY file with integer assignments (1-indexed):
-
-**Option 1: CSV with 'module' column**
-```csv
-roi_index,module
-0,1
-1,2
-2,1
-3,3
-```
-
-**Option 2: Single column (one per line)**
-```
-1
-2
-1
-3
+roi_index,roi_name,cog_x,cog_y,cog_z,cog_voxel_i,cog_voxel_j,cog_voxel_k
+1,Acumbens_left,-15.36,66.02,-20.08,79.28,34.93,142.81
+2,AID_left,-45.77,64.44,-7.54,103.61,44.97,141.56
+3,AIP_left,-61.89,29.91,-21.02,116.52,34.19,113.93
+...
 ```
 
 ---
 
-## 4. Working with ROI Subsets
+## 5. Step 3: Mapping ROI Subsets (Optional)
 
-Often your connectivity matrix has fewer nodes than your full atlas. Use `map_coordinate()` to extract matching ROIs.
+Often your connectivity matrix has fewer ROIs than your full atlas. For example:
 
-### The Problem
+- Full atlas: 170 ROIs
+- Connectivity matrix: 28 x 28
 
-```
-Atlas coordinates: 170 ROIs
-Connectivity matrix: 28 x 28
+You need to extract the coordinates for only those 28 ROIs that match your connectivity data.
 
-ERROR: Dimension mismatch!
-```
+### Using a Node File (.node)
 
-### The Solution
-
-```python
-from HarrisLabPlotting import map_coordinate, load_node_file
-import pandas as pd
-
-# Load full atlas coordinates
-full_roi_df = pd.read_csv("atlas_170_coordinates.csv")
-
-# Load node file with subset of ROIs
-node_df = load_node_file("my_subset.node")
-
-# Map coordinates to match your subset
-mapped_coords, unmapped = map_coordinate(full_roi_df, node_df)
-
-# Now use mapped_coords with your 28x28 matrix
-fig, stats = create_brain_connectivity_plot(
-    vertices=vertices,
-    faces=faces,
-    roi_coords_df=mapped_coords,  # Use mapped coordinates!
-    connectivity_matrix=connectivity_28x28,
-    ...
-)
-```
-
-### Node File Format (.node)
-
-BrainNet Viewer format with columns:
-```
-x  y  z  size  color  roi_name
--57.5089  3.3815  12.8073  4  1  AUD_left
--47.7442  2.7895  25.3957  4  1  PtPD_left
-```
-
----
-
-## 5. Basic Connectivity Plots
-
-### Minimal Example
+If you have a BrainNet Viewer `.node` file with your subset of ROIs:
 
 ```bash
-hlplot plot -m brain.gii -c rois.csv -x connectivity.npy
+hlplot coords map-subset \
+  --coords atlas_170_coordinates_comma.csv \
+  --subset my_28_rois.node \
+  --output-dir ./mapped_coordinates \
+  --name atlas_28_mapped
 ```
 
-### Customized Appearance
+### Using a Text File
+
+Create a text file with ROI names (one per line):
+
+```
+AUD_left
+PtPD_left
+RSD_left
+RSGc_left
+...
+```
+
+Then map:
+
+```bash
+hlplot coords map-subset \
+  --coords atlas_170_coordinates_comma.csv \
+  --subset roi_subset.txt \
+  --output-dir ./mapped_coordinates \
+  --name atlas_28_mapped
+```
+
+### Output
+
+The command creates:
+
+- `atlas_28_mapped_comma.csv` - Use this for plotting
+- `atlas_28_mapped_tab.csv`
+- `atlas_28_mapped.pkl`
+
+It also reports any ROIs that couldn't be matched.
+
+---
+
+## 6. Step 4: Creating Connectivity Plots
+
+Now you have all the required files:
+- Brain mesh (`.gii`)
+- ROI coordinates (`.csv`)
+- Connectivity matrix (`.npy`, `.csv`, or `.edge`)
+
+### Basic Plot
 
 ```bash
 hlplot plot \
-  -m brain.gii \
-  -c rois.csv \
-  -x connectivity.npy \
-  --output custom_plot.html \
-  --title "My Study Results" \
+  --mesh brain_mesh.gii \
+  --coords atlas_28_mapped_comma.csv \
+  --matrix connectivity.npy \
+  --output brain_network.html
+```
+
+### With Custom Title and Styling
+
+```bash
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords atlas_28_mapped_comma.csv \
+  --matrix connectivity.npy \
+  --output brain_network.html \
+  --title "My Brain Network Analysis" \
   --node-size 12 \
   --node-color steelblue \
   --mesh-opacity 0.2 \
   --camera superior
 ```
 
-### With Edge Threshold
+### Using Edge Files Directly
+
+If you have BrainNet Viewer format files:
 
 ```bash
-# Show only edges with absolute weight > 0.3
 hlplot plot \
-  -m brain.gii -c rois.csv -x connectivity.npy \
-  --edge-threshold 0.3
+  --mesh brain_mesh.gii \
+  --coords atlas_28_mapped_comma.csv \
+  --matrix my_data.edge \
+  --output brain_network.html
 ```
 
-### Python Equivalent
+### Interactive Features
 
-```python
-fig, stats = create_brain_connectivity_plot(
-    vertices=vertices,
-    faces=faces,
-    roi_coords_df=roi_df,
-    connectivity_matrix="connectivity.npy",
-    plot_title="My Study Results",
-    node_size=12,
-    node_color='steelblue',
-    mesh_opacity=0.2,
-    camera_view='superior',
-    edge_threshold=0.3
-)
-
-print(f"Total edges: {stats['total_edges']}")
-print(f"Positive: {stats['positive_edges']}")
-print(f"Negative: {stats['negative_edges']}")
-```
+The output HTML file includes:
+- **Rotate/Zoom**: Click and drag to rotate, scroll to zoom
+- **Camera presets**: Dropdown to switch between standard views
+- **Legend**: Click to toggle positive/negative edges
+- **Hover**: Mouse over nodes to see ROI names and metrics
 
 ---
 
-## 6. Modularity Visualization
+## 7. Modularity Visualization
+
+For networks with module assignments (community structure):
 
 ### Basic Modularity Plot
 
 ```bash
 hlplot modular \
-  -m brain.gii \
-  -c rois.csv \
-  -x connectivity.npy \
-  -d modules.csv
+  --mesh brain_mesh.gii \
+  --coords roi_coordinates.csv \
+  --matrix connectivity.npy \
+  --modules module_assignments.csv \
+  --output modularity.html
 ```
 
 ### With Q and Z Scores
 
-Scores are appended to the title automatically:
-
 ```bash
 hlplot modular \
-  -m brain.gii -c rois.csv -x connectivity.npy -d modules.csv \
+  --mesh brain_mesh.gii \
+  --coords roi_coordinates.csv \
+  --matrix connectivity.npy \
+  --modules module_assignments.csv \
   --q-score 0.452 \
   --z-score 3.21 \
-  --title "Network Modularity"
+  --title "Network Modularity" \
+  --output modularity.html
 ```
 
-Result: "Network Modularity (Q=0.452, Z=3.21)"
+The title will show: "Network Modularity (Q=0.452, Z=3.21)"
+
+### Module File Format
+
+CSV with ROI index and module assignment:
+
+```csv
+roi_index,module
+0,1
+1,2
+2,1
+3,3
+...
+```
+
+Or single column (one per line, 1-indexed):
+```
+1
+2
+1
+3
+...
+```
 
 ### Edge Coloring Modes
 
-**Module-colored edges** (edges inherit source node's module color):
 ```bash
-hlplot modular ... --edge-color-mode module
-```
-
-**Sign-colored edges** (red=positive, blue=negative):
-```bash
+# Color edges by positive/negative sign (default)
 hlplot modular ... --edge-color-mode sign
-```
 
-### Python Example
-
-```python
-fig, stats = create_brain_connectivity_plot_with_modularity(
-    vertices=vertices,
-    faces=faces,
-    roi_coords_df=roi_df,
-    connectivity_matrix="connectivity.npy",
-    module_assignments="modules.csv",
-    plot_title="Brain Network Modularity",
-    Q_score=0.452,
-    Z_score=3.21,
-    edge_color_mode='module',
-    camera_view='oblique'
-)
-
-print(f"Number of modules: {stats['n_modules']}")
-print(f"Module sizes: {stats['module_sizes']}")
+# Color edges by source node's module
+hlplot modular ... --edge-color-mode module
 ```
 
 ---
 
-## 7. Node Customization
+## 8. Node and Edge Customization
 
 ### Node Size
 
-**Fixed size (all nodes same):**
 ```bash
+# Fixed size for all nodes
 --node-size 15
-```
 
-**Vector of sizes (per-node):**
-```bash
---node-size path/to/sizes.csv
-```
-
-**Python - from participation coefficient:**
-```python
-import numpy as np
-
-# Scale participation coefficient to node sizes 5-20
-pc_values = metrics_df['participation_coef'].values
-node_sizes = 5 + (pc_values / pc_values.max()) * 15
-
-fig, stats = create_brain_connectivity_plot(
-    ...,
-    node_size=node_sizes
-)
+# Size from a CSV file (per-node sizes)
+--node-size sizes.csv
 ```
 
 ### Node Color
 
-**Single color:**
 ```bash
+# Single color for all nodes
 --node-color purple
 --node-color "#FF5733"
---node-color "rgb(255,87,51)"
-```
 
-**From module assignments (auto-generates colors):**
-```bash
+# Color by module assignments (auto-generates colors)
 --node-color modules.csv
 ```
 
-**Python - module assignments:**
-```python
-# Integer array (1-indexed modules)
-module_array = np.array([1, 2, 1, 3, 2, ...])
-
-fig, stats = create_brain_connectivity_plot(
-    ...,
-    node_color=module_array
-)
-
-# Colors are auto-generated for each unique module
-print(f"Color map: {stats['module_color_map']}")
-```
-
-### Node Border Color
+### Edge Width
 
 ```bash
---node-border-color darkgray
---node-border-color "#333333"
-```
+# Scaled by connection weight (min to max)
+--edge-width-min 0.5 --edge-width-max 8.0
 
----
-
-## 8. Edge Customization
-
-### Edge Width - Scaled by Weight
-
-Edges scale linearly between min and max based on absolute weight:
-
-```bash
---edge-width-min 0.5 --edge-width-max 8
-```
-
-```python
-edge_width=(0.5, 8.0)  # (min, max) tuple
-```
-
-### Edge Width - Fixed
-
-All edges same width (no scaling):
-
-```bash
+# Fixed width (no scaling)
 --edge-width-fixed 2.0
-```
-
-```python
-edge_width=2.0  # Single float
 ```
 
 ### Edge Threshold
 
-Only show edges above threshold:
+Only show edges above a minimum weight:
 
 ```bash
---edge-threshold 0.1  # Absolute value threshold
+--edge-threshold 0.3
 ```
 
 ### Edge Colors
@@ -438,9 +447,9 @@ Only show edges above threshold:
 
 ## 9. Static Image Export
 
-Export publication-quality images alongside the interactive HTML.
+Export publication-quality images alongside interactive HTML:
 
-### PNG Export (300 DPI)
+### PNG Export (Raster)
 
 ```bash
 hlplot plot ... \
@@ -468,25 +477,10 @@ For figures where you'll add your own caption:
 
 ```bash
 hlplot plot ... \
-  --export-image clean_figure.png \
+  --export-image figure.png \
   --export-no-title \
   --export-no-legend
 ```
-
-### Python Export
-
-```python
-fig, stats = create_brain_connectivity_plot(
-    ...,
-    export_image="figure.png",
-    image_format="png",
-    image_dpi=300,
-    export_show_title=True,
-    export_show_legend=True
-)
-```
-
-**Note:** Exported images use fixed 1200x900 base dimensions. DPI scales this up (300 DPI = 4x scale, capped at ~288 for memory safety).
 
 ---
 
@@ -506,7 +500,7 @@ fig, stats = create_brain_connectivity_plot(
 | `lateral-left` | Left lateral |
 | `lateral-right` | Right lateral |
 
-### CLI Usage
+### Usage
 
 ```bash
 hlplot plot ... --camera superior
@@ -517,62 +511,23 @@ hlplot plot ... --camera lateral-left
 
 ```bash
 for view in anterior posterior left right superior inferior; do
-  hlplot plot -m brain.gii -c rois.csv -x conn.npy \
+  hlplot plot \
+    --mesh brain.gii \
+    --coords rois.csv \
+    --matrix conn.npy \
     --camera $view \
-    --export-image "figure_${view}.png"
+    --export-image "figure_${view}.png" \
+    --output "brain_${view}.html"
 done
 ```
 
-### Camera Controls Dropdown
-
-By default, visualizations include an interactive camera dropdown. Disable with:
-
-```bash
---no-camera-controls
-```
-
 ---
 
-## 11. Node Metrics and Hover Data
+## 11. Batch Processing
 
-Display additional metrics when hovering over nodes.
+Process multiple subjects from a configuration file:
 
-### Metrics File Format
-
-CSV with one row per node:
-
-```csv
-roi_index,node_idx,roi_name,module,participation_coef,within_module_zscore,node_role
-0,0,Acumbens_left,1,0.425,-0.579,2
-1,1,AID_left,2,0.000,1.991,1
-```
-
-### CLI Usage
-
-```bash
-hlplot plot ... --node-metrics metrics.csv
-```
-
-### Python Usage
-
-```python
-metrics_df = pd.read_csv("metrics.csv")
-
-fig, stats = create_brain_connectivity_plot(
-    ...,
-    node_metrics=metrics_df
-)
-```
-
-Hovering over a node shows all metrics columns.
-
----
-
-## 12. Batch Processing
-
-Process multiple subjects from a single configuration file.
-
-### Batch Configuration
+### Configuration File (YAML)
 
 ```yaml
 # batch_config.yaml
@@ -584,9 +539,7 @@ output_format: "html"
 plot:
   mesh_opacity: 0.2
   node_size: 10
-
-camera:
-  view: anterior
+  camera_view: oblique
 
 batch:
   - name: "subject_01"
@@ -606,7 +559,7 @@ batch:
 hlplot batch --config batch_config.yaml
 ```
 
-### Dry Run
+### Dry Run (Preview)
 
 ```bash
 hlplot batch --config batch_config.yaml --dry-run
@@ -614,173 +567,59 @@ hlplot batch --config batch_config.yaml --dry-run
 
 ---
 
-## 13. Python API Examples
+## 12. Complete Parameter Reference
 
-### Example 1: Basic Network with Scaled Edge Widths
+### `hlplot coords generate`
 
-```python
-from HarrisLabPlotting import (
-    load_mesh_file,
-    create_brain_connectivity_plot,
-    load_connectivity_input
-)
-import pandas as pd
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `--volume`, `-v` | Yes | NIfTI volume file path |
+| `--labels`, `-l` | Yes | Label text file (tab-delimited) |
+| `--output-dir`, `-o` | Yes | Output directory |
+| `--name`, `-n` | No | Output file name (default: roi_coordinates) |
 
-# Load data
-vertices, faces = load_mesh_file("brain.gii")
-roi_df = pd.read_csv("rois.csv")
-conn_matrix = load_connectivity_input("connectivity.npy")
+### `hlplot coords map-subset`
 
-# Create visualization
-fig, stats = create_brain_connectivity_plot(
-    vertices=vertices,
-    faces=faces,
-    roi_coords_df=roi_df,
-    connectivity_matrix=conn_matrix,
-    plot_title="Brain Network",
-    save_path="network.html",
-    node_size=10,
-    node_color='purple',
-    edge_width=(1.0, 6.0),  # Scaled by weight
-    mesh_opacity=0.15,
-    camera_view='oblique'
-)
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `--coords`, `-c` | Yes | Full coordinates CSV file |
+| `--subset`, `-s` | Yes | Subset file (.node, .txt, or .csv) |
+| `--output-dir`, `-o` | Yes | Output directory |
+| `--name`, `-n` | No | Output file name (default: mapped_roi_coordinates) |
 
-print(f"Edges: {stats['total_edges']}")
-```
-
-### Example 2: Node Sizes from Participation Coefficient
-
-```python
-import numpy as np
-
-# Load metrics with participation coefficient
-metrics = pd.read_csv("metrics.csv")
-pc_values = metrics['participation_coef'].values
-
-# Scale PC to node sizes 5-20
-node_sizes = 5 + (pc_values / pc_values.max()) * 15
-
-fig, stats = create_brain_connectivity_plot(
-    vertices=vertices,
-    faces=faces,
-    roi_coords_df=roi_df,
-    connectivity_matrix=conn_matrix,
-    plot_title="Node Size = Participation Coefficient",
-    node_size=node_sizes,
-    node_metrics=metrics,  # Show metrics on hover
-    edge_width=(0.5, 4.0),
-    camera_view='superior'
-)
-```
-
-### Example 3: Modularity with All Features
-
-```python
-from HarrisLabPlotting import create_brain_connectivity_plot_with_modularity
-
-fig, stats = create_brain_connectivity_plot_with_modularity(
-    vertices=vertices,
-    faces=faces,
-    roi_coords_df=roi_df,
-    connectivity_matrix="connectivity.csv",
-    module_assignments="modules.csv",
-    plot_title="Network Modularity Analysis",
-    save_path="modularity.html",
-    Q_score=0.452,
-    Z_score=3.21,
-    edge_color_mode='module',
-    node_size=12,
-    edge_width=(1, 5),
-    mesh_opacity=0.15,
-    camera_view='oblique',
-    # Export static image too
-    export_image="modularity.png",
-    image_dpi=300
-)
-
-print(f"Modules: {stats['n_modules']}")
-print(f"Sizes: {stats['module_sizes']}")
-```
-
-### Example 4: ROI Subset Mapping
-
-```python
-from HarrisLabPlotting import map_coordinate, load_node_file, load_edge_file
-
-# Load full atlas
-full_atlas = pd.read_csv("atlas_170_coordinates.csv")
-
-# Load subset node file (28 ROIs)
-node_df = load_node_file("subset.node")
-
-# Map coordinates
-mapped_coords, unmapped = map_coordinate(full_atlas, node_df)
-print(f"Mapped {len(mapped_coords)} ROIs")
-
-# Load corresponding edge matrix
-edge_matrix = load_edge_file("subset.edge")
-
-# Now dimensions match!
-fig, stats = create_brain_connectivity_plot(
-    vertices=vertices,
-    faces=faces,
-    roi_coords_df=mapped_coords,
-    connectivity_matrix=edge_matrix,
-    ...
-)
-```
-
----
-
-## 14. Complete Parameter Reference
-
-### `hlplot plot` Parameters
+### `hlplot plot`
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `--mesh`, `-m` | PATH | required | Brain mesh file (.gii, .obj, .mz3, .ply) |
+| `--mesh`, `-m` | PATH | required | Brain mesh file |
 | `--coords`, `-c` | PATH | required | ROI coordinates CSV |
 | `--matrix`, `-x` | PATH | required | Connectivity matrix |
-| `--output`, `-o` | PATH | brain_connectivity.html | Output HTML path |
-| `--title`, `-t` | TEXT | "Brain Connectivity Network" | Plot title |
-| `--node-size` | TEXT | "8" | Node size (number or file path) |
-| `--node-color` | TEXT | "purple" | Node color (name, hex, or file) |
-| `--node-border-color` | TEXT | "magenta" | Node border color |
-| `--pos-edge-color` | TEXT | "red" | Positive edge color |
-| `--neg-edge-color` | TEXT | "blue" | Negative edge color |
-| `--edge-width-min` | FLOAT | 1.0 | Min edge width (scaled) |
-| `--edge-width-max` | FLOAT | 5.0 | Max edge width (scaled) |
-| `--edge-width-fixed` | FLOAT | None | Fixed edge width |
-| `--edge-threshold` | FLOAT | 0.0 | Min absolute edge weight |
-| `--mesh-color` | TEXT | "lightgray" | Brain mesh color |
-| `--mesh-opacity` | FLOAT | 0.15 | Brain mesh opacity (0-1) |
-| `--label-font-size` | INT | 8 | Label font size |
-| `--fast-render` | FLAG | False | Enable fast rendering |
-| `--camera` | CHOICE | "oblique" | Camera view preset |
-| `--enable-camera-controls` | FLAG | True | Show camera dropdown |
-| `--show-only-connected` | FLAG | True | Hide isolated nodes |
-| `--hide-nodes-with-hidden-edges` | FLAG | True | Hide nodes with hidden edges |
-| `--node-metrics` | PATH | None | Metrics CSV for hover |
-| `--export-image` | PATH | None | Static image export path |
-| `--image-format` | CHOICE | "png" | Image format |
-| `--image-dpi` | INT | 300 | Export DPI |
-| `--export-show-title` | FLAG | True | Title in export |
-| `--export-show-legend` | FLAG | True | Legend in export |
-| `--show` | FLAG | False | Open in browser |
+| `--output`, `-o` | PATH | brain_connectivity.html | Output path |
+| `--title`, `-t` | TEXT | "Brain Connectivity" | Plot title |
+| `--node-size` | TEXT | "8" | Node size (number or file) |
+| `--node-color` | TEXT | "purple" | Node color |
+| `--edge-width-min` | FLOAT | 1.0 | Min edge width |
+| `--edge-width-max` | FLOAT | 5.0 | Max edge width |
+| `--edge-threshold` | FLOAT | 0.0 | Min edge weight |
+| `--mesh-opacity` | FLOAT | 0.15 | Mesh transparency |
+| `--camera` | CHOICE | "oblique" | Camera view |
+| `--export-image` | PATH | None | Static image export |
+| `--image-dpi` | INT | 300 | Export resolution |
 
-### `hlplot modular` Additional Parameters
+### `hlplot modular`
+
+Inherits all `plot` parameters plus:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `--modules`, `-d` | PATH | required | Module assignments file |
 | `--q-score` | FLOAT | None | Modularity Q score |
 | `--z-score` | FLOAT | None | Z-rand score |
-| `--edge-color-mode` | CHOICE | "module" | Edge coloring: 'module' or 'sign' |
+| `--edge-color-mode` | CHOICE | "module" | Edge coloring mode |
 
 ---
 
-## 15. Troubleshooting
+## 13. Troubleshooting
 
 ### Dimension Mismatch Error
 
@@ -788,62 +627,47 @@ fig, stats = create_brain_connectivity_plot(
 Matrix size (28) differs from ROI count (170)
 ```
 
-**Solution:** Use `map_coordinate()` to extract matching ROIs:
-```python
-mapped_coords, _ = map_coordinate(full_roi_df, node_subset_df)
-```
+**Solution:** Use `hlplot coords map-subset` to extract matching ROIs:
 
-### Memory Error on Large Exports
-
-```
-Memory error during image export
-```
-
-**Solution:** Reduce DPI (max ~288 recommended):
 ```bash
---image-dpi 200
+hlplot coords map-subset \
+  --coords full_atlas.csv \
+  --subset your_28_rois.node \
+  --output-dir ./mapped
 ```
 
-### Unicode/Encoding Errors on Windows
-
-If you see encoding errors with special characters:
-```bash
-# Set console to UTF-8
-chcp 65001
-```
-
-### Module Not Found
+### Module Not Found Error
 
 ```
 ModuleNotFoundError: No module named 'HarrisLabPlotting'
 ```
 
-**Solution:** Install the package:
+**Solution:** Make sure you installed the package:
+
 ```bash
+# Activate environment first
+conda activate harris_lab_plotting
+
+# Then install
 pip install -e .
 ```
 
-### Edge File Not Loading
+### Missing ROI Labels
 
-Make sure your .edge file has the correct format (BrainNet Viewer format):
 ```
-i j weight
-0 1 0.5
-0 2 -0.3
-1 2 0.8
+Warning: ROI X (name) not found in volume
 ```
 
----
+**Solution:** Check that your label file matches the labels in your NIfTI volume:
 
-## Example Data
+```bash
+# View unique labels in your NIfTI file
+python -c "import nibabel as nib; import numpy as np; img = nib.load('your_file.nii.gz'); print(np.unique(img.get_fdata()))"
+```
 
-The `test_files/` directory contains example data you can use:
+### Mesh File Not Loading
 
-- `test_files/brain_filled_2.gii` - Brain mesh
-- `test_files/k5_data/state_0/connectivity_matrix.csv` - 114x114 connectivity
-- `test_files/k5_data/state_0/module_assignments.csv` - Module assignments
-- `test_files/k5_data/state_0/combined_metrics.csv` - Node metrics
-- `test_files/node and edges/` - Example .node and .edge files
+**Solution:** Try converting to a different format using nii2mesh or Surfice.
 
 ---
 
@@ -856,7 +680,8 @@ hlplot --help
 # Command-specific help
 hlplot plot --help
 hlplot modular --help
-hlplot batch --help
+hlplot coords generate --help
+hlplot coords map-subset --help
 ```
 
 For issues: https://github.com/AzadAzargushasb/HarrisLabPlotting/issues
