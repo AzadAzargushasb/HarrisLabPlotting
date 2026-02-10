@@ -2,416 +2,449 @@
 
 This tutorial demonstrates all features of the `hlplot` command-line interface. Each section corresponds to a test from the Jupyter notebook and shows the equivalent CLI command.
 
-**All commands should be run from the `test_files` directory:**
+**All commands should be run from the `test_files/tutorial_files` directory:**
 
 ```bash
-cd C:\Users\Azad Azargushasb\Research\HarrisLabPlotting\test_files
+cd HarrisLabPlotting/test_files/tutorial_files
 ```
 
-**Output folder for all results:**
+**All output goes to:**
 
 ```
-tutorial_cli_output/
+output/
 ```
 
 ---
 
 ## Table of Contents
 
-1. [Prerequisites: Mapping ROI Coordinates](#1-prerequisites-mapping-roi-coordinates)
-2. [Test 1: Basic Plot with Edge File](#2-test-1-basic-plot-with-edge-file)
-3. [Test 2: Vector Node Sizes with Metrics Hover](#3-test-2-vector-node-sizes-with-metrics-hover)
-4. [Test 3: Utility Commands](#4-test-3-utility-commands)
-5. [Test 4: Fixed Edge Width](#5-test-4-fixed-edge-width)
-6. [Test 5: Static Image Exports](#6-test-5-static-image-exports)
-7. [Test 6: Clean Exports (No Title/Legend)](#7-test-6-clean-exports-no-titlelegend)
-8. [Test 7: Node Visibility with Edge Toggling](#8-test-7-node-visibility-with-edge-toggling)
-9. [Test 8: Node Colors from Module Assignments](#9-test-8-node-colors-from-module-assignments)
-10. [Test 9: Modularity Visualization](#10-test-9-modularity-visualization)
-11. [Complete Flag Reference](#11-complete-flag-reference)
+1. [Tutorial Files Overview](#1-tutorial-files-overview)
+2. [Generating ROI Coordinates from NIfTI](#2-generating-roi-coordinates-from-nifti)
+3. [Mapping ROI Subsets](#3-mapping-roi-subsets)
+4. [Basic Connectivity Plot (28 ROIs)](#4-basic-connectivity-plot-28-rois)
+5. [114-ROI Network with Metrics](#5-114-roi-network-with-metrics)
+6. [Utility Commands](#6-utility-commands)
+7. [Fixed Edge Width](#7-fixed-edge-width)
+8. [Static Image Exports](#8-static-image-exports)
+9. [Clean Exports (No Title/Legend)](#9-clean-exports-no-titlelegend)
+10. [Node Visibility with Edge Toggling](#10-node-visibility-with-edge-toggling)
+11. [Node Colors from Modules](#11-node-colors-from-modules)
+12. [Modularity Visualization](#12-modularity-visualization)
+13. [Vector Node Sizes from CSV](#13-vector-node-sizes-from-csv)
+14. [Command Reference](#14-command-reference)
 
 ---
 
-## 1. Prerequisites: Mapping ROI Coordinates
+## 1. Tutorial Files Overview
 
-Before creating visualizations, you often need to map your ROI coordinates to match your connectivity matrix dimensions. The notebook uses a 170-ROI atlas but the edge file only has 28 ROIs.
-
-### Problem
+The `tutorial_files/` folder contains all data needed for this tutorial:
 
 ```
-Full atlas: 170 ROIs
-Edge matrix: 28 x 28
-ERROR: Dimension mismatch!
+tutorial_files/
+├── brain_atlas_170.nii          # NIfTI volume with 170 ROI labels
+├── brain_mesh.gii               # Brain surface mesh (GIFTI format)
+├── atlas_170_labels.txt         # Label file: 170 ROI names (index\tname)
+├── atlas_170_coordinates.csv    # Pre-generated 170 ROI coordinates
+├── atlas_114_labels.txt         # Label file: 114 ROI names (subset)
+├── atlas_114_coordinates.csv    # Pre-generated 114 ROI coordinates
+├── k5_state_0/
+│   ├── connectivity_matrix.csv  # 114x114 connectivity matrix
+│   ├── module_assignments.csv   # Module assignments for 114 ROIs
+│   └── combined_metrics.csv     # Node metrics (PC, Z-scores, etc.)
+└── node_edge_28/
+    ├── rois_28.node             # BrainNet Viewer node file (28 ROIs)
+    └── connectivity_28.edge     # BrainNet Viewer edge file (28x28)
 ```
 
-### Solution: Map coordinates using the node file
+### Setup: Create Output Directory
 
-The `.node` file contains the 28 ROI names that match the edge file. We extract only those coordinates from the full atlas.
+```bash
+mkdir -p output
+```
+
+---
+
+## 2. Generating ROI Coordinates from NIfTI
+
+**This is the FIRST step when starting with a new atlas.**
+
+Use `hlplot coords generate` to extract center-of-gravity (COG) coordinates from a NIfTI volume file.
 
 ### Copy-Paste Command
 
 ```bash
-hlplot coords map-subset \
-  --coords "C:\Users\Azad Azargushasb\Research\roi_coordinates\atlas_170_coordinates\atlas_170_coordinates_comma.csv" \
-  --subset "node and edges\total.node" \
-  --output-dir "tutorial_cli_output" \
-  --name "atlas_28_mapped"
-```
-
-### Output Files
-
-- `tutorial_cli_output/atlas_28_mapped_comma.csv` - Use this for plotting
-- `tutorial_cli_output/atlas_28_mapped_tab.csv` - Tab-delimited version
-- `tutorial_cli_output/atlas_28_mapped.pkl` - Python pickle format
-
-### Flag Explanations
-
-| Flag | Description |
-|------|-------------|
-| `--coords`, `-c` | Path to the full ROI coordinates CSV file (170 ROIs) |
-| `--subset`, `-s` | Path to the subset file. Supports `.node` (BrainNet Viewer), `.txt`, or `.csv` with ROI names |
-| `--output-dir`, `-o` | Directory where output files will be saved |
-| `--name`, `-n` | Base name for output files (without extension) |
-
----
-
-## 2. Test 1: Basic Plot with Edge File
-
-This test demonstrates:
-- Loading connectivity from a `.edge` file (BrainNet Viewer format)
-- Positive/negative edge coloring (red/blue)
-- Scaled edge widths based on connection strength
-- Hiding nodes when their edges are toggled off
-
-### Copy-Paste Command
-
-```bash
-hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "tutorial_cli_output\atlas_28_mapped_comma.csv" \
-  --matrix "node and edges\total(1).edge" \
-  --output "tutorial_cli_output\test1_edge_file_toggle.html" \
-  --title "Test 1: Edge File + Pos/Neg Toggling" \
-  --node-size 10 \
-  --edge-width-min 1.0 \
-  --edge-width-max 10.0 \
-  --camera superior \
-  --hide-nodes-with-hidden-edges \
-  --label-font-size 20
+hlplot coords generate \
+  --volume brain_atlas_170.nii \
+  --labels atlas_170_labels.txt \
+  --output-dir output \
+  --name my_170_coordinates
 ```
 
 ### Expected Output
 
-- Interactive HTML file with 28 nodes and 27 edges
-- Positive edges shown in red, negative in blue
-- Edge widths scale from 1.0 to 10.0 based on absolute weight
-- Clicking legend items toggles edge visibility AND node visibility
+Creates three files in `output/`:
+- `my_170_coordinates_comma.csv` - Comma-delimited (use for plotting)
+- `my_170_coordinates_tab.csv` - Tab-delimited
+- `my_170_coordinates.pkl` - Python pickle
 
 ### Flag Explanations
 
-| Flag | Description |
-|------|-------------|
-| `--mesh`, `-m` | Path to brain mesh file (.gii, .obj, .mz3, .ply) |
-| `--coords`, `-c` | Path to ROI coordinates CSV (must have cog_x, cog_y, cog_z, roi_name columns) |
-| `--matrix`, `-x` | Path to connectivity matrix (.npy, .csv, .edge, .txt, .mat) |
-| `--output`, `-o` | Output HTML file path |
-| `--title`, `-t` | Plot title displayed at top |
-| `--node-size` | Size of all nodes (single number) or path to CSV with per-node sizes |
-| `--edge-width-min` | Minimum edge width when scaling by weight |
-| `--edge-width-max` | Maximum edge width when scaling by weight |
-| `--camera` | Camera view preset (oblique, anterior, posterior, left, right, superior, inferior) |
-| `--hide-nodes-with-hidden-edges` | When enabled, nodes hide when their edge type is toggled off in legend |
-| `--label-font-size` | Font size for ROI labels on hover |
+| Flag | Short | Required | Description |
+|------|-------|----------|-------------|
+| `--volume` | `-v` | Yes | NIfTI file containing integer ROI labels (1-N) |
+| `--labels` | `-l` | Yes | Text file mapping label numbers to names. Format: `1\tROI_Name` |
+| `--output-dir` | `-o` | Yes | Directory where output files will be saved |
+| `--name` | `-n` | No | Base name for output files. Default: `roi_coordinates` |
+
+### Label File Format
+
+The label file must be tab-delimited with format `index\tname`:
+
+```
+1	Acumbens_left
+2	AID_left
+3	AIP_left
+...
+170	VTA_right
+```
 
 ---
 
-## 3. Test 2: Vector Node Sizes with Metrics Hover
+## 3. Mapping ROI Subsets
 
-This test demonstrates:
-- Using a 114-ROI network
-- Node metrics displayed on hover
-- Note: Vector node sizes from a CSV file are not directly supported in CLI (use Python API for this)
+When your connectivity matrix has fewer ROIs than your full atlas, use `hlplot coords map-subset` to extract matching coordinates.
+
+### Understanding `map` vs `map-subset`
+
+| Command | Purpose |
+|---------|---------|
+| `coords map` | Transform coordinates: rename columns, apply scaling |
+| `coords map-subset` | Extract a subset of ROIs by matching names |
+
+### Example A: Map 170 → 28 ROIs (using .node file)
+
+The 28-ROI node file contains ROI names that exist in the 170-ROI atlas.
+
+```bash
+hlplot coords map-subset \
+  --coords atlas_170_coordinates.csv \
+  --subset node_edge_28/rois_28.node \
+  --output-dir output \
+  --name atlas_28_mapped
+```
+
+### Example B: Map 170 → 114 ROIs (using .txt label file)
+
+The 114-ROI label file contains a subset of the 170 ROI names (with some tracts removed).
+
+```bash
+hlplot coords map-subset \
+  --coords atlas_170_coordinates.csv \
+  --subset atlas_114_labels.txt \
+  --output-dir output \
+  --name atlas_114_mapped
+```
+
+### Expected Output
+
+```
+Summary: Successfully mapped 28 out of 28 ROIs
+All ROIs were successfully mapped!
+```
+
+Creates:
+- `output/atlas_28_mapped_comma.csv`
+- `output/atlas_28_mapped_tab.csv`
+- `output/atlas_28_mapped.pkl`
+
+### Flag Explanations
+
+| Flag | Short | Required | Description |
+|------|-------|----------|-------------|
+| `--coords` | `-c` | Yes | Full coordinates CSV file (source atlas) |
+| `--subset` | `-s` | Yes | Subset definition. Supports: `.node`, `.txt`, `.csv` |
+| `--output-dir` | `-o` | Yes | Output directory |
+| `--name` | `-n` | No | Output file name. Default: `mapped_roi_coordinates` |
+
+### Supported Subset File Formats
+
+| Format | Description |
+|--------|-------------|
+| `.node` | BrainNet Viewer format. Uses last column (ROI name) |
+| `.txt` | One ROI name per line, or `index\tname` format |
+| `.csv` | CSV with `roi_name` column |
+
+---
+
+## 4. Basic Connectivity Plot (28 ROIs)
+
+Create a visualization with the 28-ROI network.
+
+### Prerequisites
+
+First, map the 28 ROI coordinates:
+
+```bash
+hlplot coords map-subset \
+  --coords atlas_170_coordinates.csv \
+  --subset node_edge_28/rois_28.node \
+  --output-dir output \
+  --name atlas_28_mapped
+```
 
 ### Copy-Paste Command
 
 ```bash
 hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" \
-  --matrix "k5_data\state_0\connectivity_matrix.csv" \
-  --output "tutorial_cli_output\test2_with_metrics.html" \
-  --title "Test 2: 114-ROI Network with Metrics Hover" \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_mapped_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge \
+  --output output/test1_basic_28roi.html \
+  --title "28-ROI Brain Connectivity Network" \
   --node-size 10 \
-  --edge-width-min 0.5 \
-  --edge-width-max 4.0 \
-  --camera oblique \
-  --node-metrics "k5_data\state_0\combined_metrics.csv" \
+  --edge-width-min 1.0 \
+  --edge-width-max 10.0 \
+  --camera superior \
   --hide-nodes-with-hidden-edges
 ```
 
 ### Expected Output
 
-- 114 nodes with 452 edges
-- Hovering over nodes shows all metrics from the CSV
-- Metrics include: module, participation_coef, within_module_zscore, etc.
+- 28 nodes, 27 edges
+- Positive edges in red, negative in blue
+- Edge widths scaled by connection strength
+- Clicking legend toggles edges AND nodes
 
 ### Flag Explanations
 
 | Flag | Description |
 |------|-------------|
-| `--node-metrics` | Path to CSV file with node metrics. Each row corresponds to a node. All columns are displayed on hover. |
+| `--mesh`, `-m` | Brain mesh file (.gii, .obj, .mz3, .ply) |
+| `--coords`, `-c` | ROI coordinates CSV (columns: cog_x, cog_y, cog_z, roi_name) |
+| `--matrix`, `-x` | Connectivity matrix (.npy, .csv, .edge, .txt, .mat) |
+| `--output`, `-o` | Output HTML file |
+| `--title`, `-t` | Plot title |
+| `--node-size` | Node size (number or CSV file path) |
+| `--edge-width-min` | Minimum edge width when scaling |
+| `--edge-width-max` | Maximum edge width when scaling |
+| `--camera` | View: oblique, anterior, posterior, left, right, superior, inferior |
+| `--hide-nodes-with-hidden-edges` | Hide nodes when their edges are hidden |
 
 ---
 
-## 4. Test 3: Utility Commands
+## 5. 114-ROI Network with Metrics
 
-The CLI provides utility commands for inspecting and manipulating data files.
-
-### 4a. View Matrix Information
-
-```bash
-hlplot utils info --matrix "node and edges\total(1).edge"
-```
-
-**Output shows:**
-- Matrix shape and data type
-- Non-zero values and density
-- Min/max values
-- Positive/negative edge counts
-- Whether matrix is symmetric
-
-### 4b. View Matrix Information (114x114)
-
-```bash
-hlplot utils info --matrix "k5_data\state_0\connectivity_matrix.csv"
-```
-
-### 4c. Validate Files for Compatibility
-
-```bash
-hlplot utils validate \
-  --mesh "brain_filled_2.gii" \
-  --coords "tutorial_cli_output\atlas_28_mapped_comma.csv" \
-  --matrix "node and edges\total(1).edge"
-```
-
-**Output shows:**
-- Whether each file can be loaded
-- ROI counts and matrix dimensions
-- Compatibility between files
-
-### 4d. Load and Inspect Coordinates
-
-```bash
-hlplot coords load \
-  --file "tutorial_cli_output\atlas_28_mapped_comma.csv" \
-  --show-stats \
-  --validate
-```
-
-### Flag Explanations
-
-| Command | Flag | Description |
-|---------|------|-------------|
-| `utils info` | `--matrix`, `-m` | Connectivity matrix file to inspect |
-| `utils validate` | `--mesh`, `-m` | Mesh file to validate |
-| `utils validate` | `--coords`, `-c` | Coordinates file to validate |
-| `utils validate` | `--matrix`, `-x` | Matrix file to validate |
-| `utils validate` | `--modules`, `-d` | Module assignments file to validate |
-| `coords load` | `--file`, `-f` | Coordinates file to load |
-| `coords load` | `--show-stats` | Show coordinate statistics |
-| `coords load` | `--validate` | Check coordinate format |
-| `coords load` | `--show-head N` | Show first N rows |
-
----
-
-## 5. Test 4: Fixed Edge Width
-
-This test demonstrates using a fixed edge width instead of scaling by weight.
+Create a visualization with node metrics displayed on hover.
 
 ### Copy-Paste Command
 
 ```bash
 hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" \
-  --matrix "k5_data\state_0\connectivity_matrix.csv" \
-  --output "tutorial_cli_output\test4_fixed_edge_width.html" \
-  --title "Test 4: Fixed Edge Width" \
+  --mesh brain_mesh.gii \
+  --coords atlas_114_coordinates.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --output output/test2_114roi_metrics.html \
+  --title "114-ROI Network with Metrics Hover" \
+  --node-size 10 \
+  --edge-width-min 0.5 \
+  --edge-width-max 4.0 \
+  --camera oblique \
+  --node-metrics k5_state_0/combined_metrics.csv \
+  --hide-nodes-with-hidden-edges
+```
+
+### Expected Output
+
+- 114 nodes, 452 edges
+- Hovering over nodes shows: module, participation_coef, within_module_zscore, etc.
+
+### Flag Explanations
+
+| Flag | Description |
+|------|-------------|
+| `--node-metrics` | CSV with node metrics. All columns shown on hover. One row per node. |
+
+---
+
+## 6. Utility Commands
+
+### 6a. Check NIfTI ROI Count
+
+Verify how many ROIs are in a NIfTI file:
+
+```bash
+python -c "
+import nibabel as nib
+import numpy as np
+img = nib.load('brain_atlas_170.nii')
+labels = np.unique(img.get_fdata())
+labels = labels[labels != 0]
+print(f'ROI count: {len(labels)}')
+print(f'Label range: {labels.min():.0f} to {labels.max():.0f}')
+"
+```
+
+### 6b. View Matrix Information
+
+```bash
+hlplot utils info --matrix node_edge_28/connectivity_28.edge
+```
+
+**Output shows:**
+- Shape, non-zero values, density
+- Min/max values, positive/negative edge counts
+- Symmetry check
+
+### 6c. View 114-ROI Matrix Info
+
+```bash
+hlplot utils info --matrix k5_state_0/connectivity_matrix.csv
+```
+
+### 6d. Validate File Compatibility
+
+```bash
+hlplot utils validate \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_mapped_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge
+```
+
+### 6e. Inspect Coordinates File
+
+```bash
+hlplot coords load \
+  --file atlas_170_coordinates.csv \
+  --show-stats \
+  --validate
+```
+
+---
+
+## 7. Fixed Edge Width
+
+All edges same width (no scaling by weight).
+
+### Copy-Paste Command
+
+```bash
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords atlas_114_coordinates.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --output output/test4_fixed_width.html \
+  --title "Fixed Edge Width (2.0)" \
   --node-size 10 \
   --edge-width-fixed 2.0 \
   --camera anterior
 ```
 
-### Expected Output
-
-- All edges have the same width (2.0)
-- No scaling based on connection strength
-
 ### Flag Explanations
 
 | Flag | Description |
 |------|-------------|
-| `--edge-width-fixed` | Fixed width for all edges. When set, ignores `--edge-width-min` and `--edge-width-max` |
+| `--edge-width-fixed` | Fixed width for ALL edges. Ignores `--edge-width-min/max`. |
 
 ---
 
-## 6. Test 5: Static Image Exports
+## 8. Static Image Exports
 
-Export publication-quality static images alongside interactive HTML.
+Export publication-quality images alongside interactive HTML.
 
-### 5a. PNG Export (300 DPI - Publication Quality)
+### 8a. PNG Export (300 DPI)
 
 ```bash
 hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" \
-  --matrix "k5_data\state_0\connectivity_matrix.csv" \
-  --output "tutorial_cli_output\test5a_png_export.html" \
-  --title "Test 5a: PNG Export (300 DPI)" \
-  --node-size 10 \
-  --edge-width-min 0.5 \
-  --edge-width-max 4.0 \
+  --mesh brain_mesh.gii \
+  --coords atlas_114_coordinates.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --output output/test5a_png.html \
+  --title "PNG Export (300 DPI)" \
   --camera superior \
-  --node-metrics "k5_data\state_0\combined_metrics.csv" \
-  --export-image "tutorial_cli_output\test5a_brain_network.png" \
+  --export-image output/test5a_brain_network.png \
   --image-dpi 300
 ```
 
-### 5b. SVG Export (Vector - Infinitely Scalable)
+### 8b. SVG Export (Vector)
 
 ```bash
 hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" \
-  --matrix "k5_data\state_0\connectivity_matrix.csv" \
-  --output "tutorial_cli_output\test5b_svg_export.html" \
-  --title "Test 5b: SVG Export (Vector)" \
-  --node-size 10 \
-  --edge-width-min 0.5 \
-  --edge-width-max 4.0 \
+  --mesh brain_mesh.gii \
+  --coords atlas_114_coordinates.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --output output/test5b_svg.html \
+  --title "SVG Export (Vector)" \
   --camera oblique \
-  --export-image "tutorial_cli_output\test5b_brain_network.svg"
+  --export-image output/test5b_brain_network.svg
 ```
 
-### 5c. PDF Export (Vector for Publications)
+### 8c. PDF Export (Publication)
 
 ```bash
 hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" \
-  --matrix "k5_data\state_0\connectivity_matrix.csv" \
-  --output "tutorial_cli_output\test5c_pdf_export.html" \
-  --title "Test 5c: PDF Export (Publication)" \
-  --node-size 10 \
-  --edge-width-min 0.5 \
-  --edge-width-max 4.0 \
+  --mesh brain_mesh.gii \
+  --coords atlas_114_coordinates.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --output output/test5c_pdf.html \
+  --title "PDF Export" \
   --camera anterior \
-  --export-image "tutorial_cli_output\test5c_brain_network.pdf"
-```
-
-### 5d. High DPI PNG Export
-
-```bash
-hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" \
-  --matrix "k5_data\state_0\connectivity_matrix.csv" \
-  --output "tutorial_cli_output\test5d_highres_export.html" \
-  --title "Test 5d: High DPI PNG" \
-  --node-size 10 \
-  --edge-width-min 0.5 \
-  --edge-width-max 4.0 \
-  --camera left \
-  --export-image "tutorial_cli_output\test5d_brain_network_large.png" \
-  --image-dpi 288
+  --export-image output/test5c_brain_network.pdf
 ```
 
 ### Flag Explanations
 
 | Flag | Description |
 |------|-------------|
-| `--export-image` | Path to save static image. Supports `.png`, `.svg`, `.pdf` |
-| `--image-dpi` | DPI for PNG export. Max ~288 for memory safety. Default: 300 |
-| `--image-format` | Image format if path has no extension. Options: png, svg, pdf |
-
-### Output Dimensions
-
-- Base dimensions: 1200 x 900 pixels
-- At 300 DPI: 4800 x 3600 pixels (capped at 4x scale)
-- SVG and PDF are vector formats (infinitely scalable)
+| `--export-image` | Output path. Extension determines format (.png, .svg, .pdf) |
+| `--image-dpi` | DPI for PNG. Max ~288 for memory safety. Default: 300 |
+| `--image-format` | Format if path has no extension |
 
 ---
 
-## 7. Test 6: Clean Exports (No Title/Legend)
+## 9. Clean Exports (No Title/Legend)
 
-For publication figures where you want to add your own caption.
+For publication figures where you add your own caption.
 
-### 6a. Clean PNG (No Title, No Legend)
+### 9a. Clean PNG
 
 ```bash
 hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "tutorial_cli_output\atlas_28_mapped_comma.csv" \
-  --matrix "node and edges\total(1).edge" \
-  --output "tutorial_cli_output\test6a_no_title_no_legend.html" \
-  --title "This title will NOT appear in export" \
-  --edge-width-min 1.0 \
-  --edge-width-max 6.0 \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_mapped_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge \
+  --output output/test6a_clean.html \
+  --title "This title will NOT appear" \
   --camera superior \
-  --export-image "tutorial_cli_output\test6a_clean_export.png" \
+  --export-image output/test6a_clean.png \
   --export-no-title \
   --export-no-legend \
   --image-dpi 150
 ```
 
-### 6b. Title Only (No Legend)
+### 9b. Title Only (No Legend)
 
 ```bash
 hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "tutorial_cli_output\atlas_28_mapped_comma.csv" \
-  --matrix "node and edges\total(1).edge" \
-  --output "tutorial_cli_output\test6b_title_only.html" \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_mapped_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge \
+  --output output/test6b_title_only.html \
   --title "Brain Connectivity Network" \
-  --edge-width-min 1.0 \
-  --edge-width-max 6.0 \
   --camera oblique \
-  --export-image "tutorial_cli_output\test6b_title_only.png" \
-  --export-no-legend \
-  --image-dpi 150
-```
-
-### 6c. Clean SVG
-
-```bash
-hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "tutorial_cli_output\atlas_28_mapped_comma.csv" \
-  --matrix "node and edges\total(1).edge" \
-  --output "tutorial_cli_output\test6c_clean_svg.html" \
-  --title "This should not appear" \
-  --edge-width-min 1.0 \
-  --edge-width-max 6.0 \
-  --camera anterior \
-  --export-image "tutorial_cli_output\test6c_clean.svg" \
-  --export-no-title \
+  --export-image output/test6b_title_only.png \
   --export-no-legend
 ```
 
-### 6d. Clean PDF (Ideal for Publications)
+### 9c. Clean PDF (Publication)
 
 ```bash
 hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "tutorial_cli_output\atlas_28_mapped_comma.csv" \
-  --matrix "node and edges\total(1).edge" \
-  --output "tutorial_cli_output\test6d_clean_pdf.html" \
-  --title "This should not appear" \
-  --edge-width-min 1.0 \
-  --edge-width-max 6.0 \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_mapped_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge \
+  --output output/test6c_clean.html \
   --camera left \
-  --export-image "tutorial_cli_output\test6d_clean.pdf" \
+  --export-image output/test6c_clean.pdf \
   --export-no-title \
   --export-no-legend
 ```
@@ -422,99 +455,69 @@ hlplot plot \
 |------|-------------|
 | `--export-no-title` | Exclude title from exported image |
 | `--export-no-legend` | Exclude legend from exported image |
-| `--export-show-title` | Include title in export (default) |
-| `--export-show-legend` | Include legend in export (default) |
 
 ---
 
-## 8. Test 7: Node Visibility with Edge Toggling
+## 10. Node Visibility with Edge Toggling
 
-This test creates a visualization where nodes can be toggled along with their edges.
+Nodes can be toggled along with their edges in the interactive legend.
 
 ### Copy-Paste Command
 
 ```bash
 hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "tutorial_cli_output\atlas_28_mapped_comma.csv" \
-  --matrix "node and edges\total(1).edge" \
-  --output "tutorial_cli_output\test7_node_visibility.html" \
-  --title "Test 7: Node Visibility with Edge Toggle" \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_mapped_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge \
+  --output output/test7_node_visibility.html \
+  --title "Node Visibility with Edge Toggle" \
   --node-size 12 \
   --edge-width-min 1.0 \
   --edge-width-max 8.0 \
   --camera superior \
-  --hide-nodes-with-hidden-edges \
-  --label-font-size 14
+  --hide-nodes-with-hidden-edges
 ```
 
-### Expected Behavior
+### Interactive Behavior
 
 1. Click "Positive Edges" in legend → Positive edges AND their nodes hide
 2. Click "Negative Edges" in legend → Negative edges AND their nodes hide
 3. Click BOTH → ALL nodes and edges hide (only brain surface remains)
 
-### Flag Explanations
-
-| Flag | Description |
-|------|-------------|
-| `--hide-nodes-with-hidden-edges` | Enable node-edge linking. Nodes hide when their edge type is toggled off. |
-| `--keep-nodes-visible` | Opposite of above. Nodes stay visible even when edges are hidden. |
-
 ---
 
-## 9. Test 8: Node Colors from Module Assignments
+## 11. Node Colors from Modules
 
 Color nodes by module/community assignment.
 
-### 8a. Using Module Assignments CSV File
+### 11a. Using Module CSV File
 
 ```bash
 hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" \
-  --matrix "k5_data\state_0\connectivity_matrix.csv" \
-  --output "tutorial_cli_output\test8a_module_colors.html" \
-  --title "Test 8a: Node Colors from Module Assignments" \
+  --mesh brain_mesh.gii \
+  --coords atlas_114_coordinates.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --output output/test8a_module_colors.html \
+  --title "Node Colors from Modules" \
   --node-size 10 \
-  --node-color "k5_data\state_0\module_assignments.csv" \
+  --node-color k5_state_0/module_assignments.csv \
   --node-border-color darkgray \
-  --edge-width-min 0.5 \
-  --edge-width-max 4.0 \
   --camera oblique
-```
-
-### 8b. Same with Anterior View
-
-```bash
-hlplot plot \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" \
-  --matrix "k5_data\state_0\connectivity_matrix.csv" \
-  --output "tutorial_cli_output\test8b_module_colors_csv.html" \
-  --title "Test 8b: Node Colors from CSV File" \
-  --node-size 10 \
-  --node-color "k5_data\state_0\module_assignments.csv" \
-  --node-border-color darkgray \
-  --edge-width-min 0.5 \
-  --edge-width-max 4.0 \
-  --camera anterior
 ```
 
 ### Expected Output
 
-- Nodes colored by module assignment (6 unique colors for 6 modules)
-- Colors are auto-generated and visually distinct
-- Module 1: Red, Module 2: Green, Module 3: Blue, etc.
+- Nodes colored by module (6 distinct colors for 6 modules)
+- Colors auto-generated: Module 1=Red, 2=Green, 3=Blue, etc.
 
 ### Flag Explanations
 
 | Flag | Description |
 |------|-------------|
-| `--node-color` | Accepts: color name (`purple`), hex code (`#FF5733`), or CSV path with module assignments |
-| `--node-border-color` | Border/outline color for nodes. Default: magenta |
+| `--node-color` | Accepts: color name, hex code, or CSV path with module assignments |
+| `--node-border-color` | Border color for nodes |
 
-### Module Assignments CSV Format
+### Module CSV Format
 
 ```csv
 roi_index,module
@@ -527,136 +530,156 @@ roi_index,module
 
 ---
 
-## 10. Test 9: Modularity Visualization
+## 12. Modularity Visualization
 
-Use the dedicated `hlplot modular` command for modularity analysis.
+Use `hlplot modular` for dedicated modularity analysis.
 
-### 9a. Basic Modularity with Q and Z Scores
+### 12a. With Q and Z Scores
 
 ```bash
 hlplot modular \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" \
-  --matrix "k5_data\state_0\connectivity_matrix.csv" \
-  --modules "k5_data\state_0\module_assignments.csv" \
-  --output "tutorial_cli_output\test9a_modularity_viz.html" \
+  --mesh brain_mesh.gii \
+  --coords atlas_114_coordinates.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --modules k5_state_0/module_assignments.csv \
+  --output output/test9a_modularity.html \
   --title "Brain Network Modularity" \
   --q-score 0.452 \
   --z-score 3.21 \
   --node-size 10 \
-  --edge-width-min 0.5 \
-  --edge-width-max 4.0 \
   --camera oblique
 ```
 
-### Expected Output
+**Output title:** "Brain Network Modularity (Q=0.452, Z=3.21)"
 
-- Title shows: "Brain Network Modularity (Q=0.452, Z=3.21)"
-- Nodes colored by module
-- Legend shows module colors
-- Edges colored by positive/negative sign (default)
+### 12b. Module-Colored Edges
 
-### 9b. Module-Colored Edges
+Edges colored by source node's module instead of positive/negative sign:
 
 ```bash
 hlplot modular \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" \
-  --matrix "k5_data\state_0\connectivity_matrix.csv" \
-  --modules "k5_data\state_0\module_assignments.csv" \
-  --output "tutorial_cli_output\test9c_module_edges.html" \
-  --title "Modularity with Module-Colored Edges" \
-  --q-score 0.452 \
-  --z-score 3.21 \
+  --mesh brain_mesh.gii \
+  --coords atlas_114_coordinates.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --modules k5_state_0/module_assignments.csv \
+  --output output/test9b_module_edges.html \
+  --title "Module-Colored Edges" \
   --edge-color-mode module \
   --node-size 10 \
-  --edge-width-min 0.5 \
-  --edge-width-max 4.0 \
-  --camera oblique
+  --camera anterior
 ```
 
-### Expected Output
-
-- Edges colored by the SOURCE node's module color
-- Same color for node and its outgoing edges
-
-### 9c. Sign-Colored Edges (Default)
+### 12c. Sign-Colored Edges (Default)
 
 ```bash
 hlplot modular \
-  --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" \
-  --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" \
-  --matrix "k5_data\state_0\connectivity_matrix.csv" \
-  --modules "k5_data\state_0\module_assignments.csv" \
-  --output "tutorial_cli_output\test9b_sign_edges.html" \
-  --title "Modularity with Sign-Colored Edges" \
+  --mesh brain_mesh.gii \
+  --coords atlas_114_coordinates.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --modules k5_state_0/module_assignments.csv \
+  --output output/test9c_sign_edges.html \
+  --title "Sign-Colored Edges" \
   --edge-color-mode sign \
   --node-size 10 \
-  --camera anterior
+  --camera oblique
 ```
 
 ### Flag Explanations
 
 | Flag | Description |
 |------|-------------|
-| `--modules`, `-d` | Path to module assignments file (required for `hlplot modular`) |
-| `--q-score` | Modularity Q score to display in title |
-| `--z-score` | Z-rand score to display in title |
-| `--edge-color-mode` | Edge coloring mode: `sign` (red/blue by positive/negative) or `module` (by source node's module) |
+| `--modules`, `-d` | Module assignments file (required) |
+| `--q-score` | Modularity Q score for title |
+| `--z-score` | Z-rand score for title |
+| `--edge-color-mode` | `sign` (red/blue) or `module` (by source node) |
 
 ---
 
-## 11. Complete Flag Reference
+## 13. Vector Node Sizes from CSV
 
-### `hlplot plot` - All Flags
+Node sizes can be loaded from a CSV or NPY file, allowing different sizes for each node.
 
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--mesh`, `-m` | PATH | required | Brain mesh file (.gii, .obj, .mz3, .ply) |
-| `--coords`, `-c` | PATH | required | ROI coordinates CSV |
-| `--matrix`, `-x` | PATH | required | Connectivity matrix |
-| `--output`, `-o` | PATH | brain_connectivity.html | Output HTML path |
-| `--title`, `-t` | TEXT | "Brain Connectivity Network" | Plot title |
-| `--node-size` | TEXT | "8" | Node size (number or CSV file path) |
-| `--node-color` | TEXT | "purple" | Node color (name, hex, or CSV with modules) |
-| `--node-border-color` | TEXT | "magenta" | Node border color |
-| `--pos-edge-color` | TEXT | "red" | Positive edge color |
-| `--neg-edge-color` | TEXT | "blue" | Negative edge color |
-| `--edge-width-min` | FLOAT | 1.0 | Min edge width (scaled mode) |
-| `--edge-width-max` | FLOAT | 5.0 | Max edge width (scaled mode) |
-| `--edge-width-fixed` | FLOAT | None | Fixed edge width (disables scaling) |
-| `--edge-threshold` | FLOAT | 0.0 | Min absolute edge weight to display |
-| `--mesh-color` | TEXT | "lightgray" | Brain mesh color |
-| `--mesh-opacity` | FLOAT | 0.15 | Mesh transparency (0-1) |
-| `--label-font-size` | INT | 8 | Label font size |
-| `--fast-render` | FLAG | False | Enable fast rendering |
-| `--camera` | CHOICE | "oblique" | Camera view preset |
-| `--enable-camera-controls` | FLAG | True | Show camera dropdown |
-| `--no-camera-controls` | FLAG | False | Hide camera dropdown |
-| `--show-only-connected` | FLAG | True | Hide isolated nodes |
-| `--show-all-nodes` | FLAG | False | Show all nodes including isolated |
-| `--hide-nodes-with-hidden-edges` | FLAG | True | Hide nodes when edges hidden |
-| `--keep-nodes-visible` | FLAG | False | Keep nodes visible always |
-| `--node-metrics` | PATH | None | CSV with metrics for hover |
-| `--export-image` | PATH | None | Static image export path |
-| `--image-format` | CHOICE | "png" | Image format (png, svg, pdf) |
-| `--image-dpi` | INT | 300 | PNG export DPI |
-| `--export-show-title` | FLAG | True | Title in export |
-| `--export-no-title` | FLAG | False | No title in export |
-| `--export-show-legend` | FLAG | True | Legend in export |
-| `--export-no-legend` | FLAG | False | No legend in export |
-| `--show` | FLAG | False | Open in browser |
+### Create a Node Sizes CSV
 
-### `hlplot modular` - Additional Flags
+First, create a CSV with per-node sizes based on a metric (e.g., participation coefficient):
 
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--modules`, `-d` | PATH | required | Module assignments file |
-| `--q-score` | FLOAT | None | Modularity Q score for title |
-| `--z-score` | FLOAT | None | Z-rand score for title |
-| `--edge-color-mode` | CHOICE | "module" | Edge coloring: 'module' or 'sign' |
+```bash
+python -c "
+import pandas as pd
+import numpy as np
 
-### Camera View Options
+# Load metrics
+metrics = pd.read_csv('k5_state_0/combined_metrics.csv')
+
+# Scale participation coefficient to node sizes 5-20
+pc = metrics['participation_coef'].values
+sizes = 5 + (pc / pc.max()) * 15
+
+# Save as CSV (single column)
+pd.DataFrame({'size': sizes}).to_csv('output/node_sizes_by_pc.csv', index=False)
+print(f'Created node_sizes_by_pc.csv with {len(sizes)} sizes')
+print(f'Size range: {sizes.min():.1f} to {sizes.max():.1f}')
+"
+```
+
+### Use Vector Sizes in Plot
+
+```bash
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords atlas_114_coordinates.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --output output/test_vector_sizes.html \
+  --title "Node Size = Participation Coefficient" \
+  --node-size output/node_sizes_by_pc.csv \
+  --node-metrics k5_state_0/combined_metrics.csv \
+  --edge-width-min 0.5 \
+  --edge-width-max 4.0 \
+  --camera superior
+```
+
+### Node Size Input Options
+
+| Input Type | Example | Description |
+|------------|---------|-------------|
+| Single number | `--node-size 10` | All nodes same size |
+| CSV file | `--node-size sizes.csv` | One size per node (first column) |
+| NPY file | `--node-size sizes.npy` | NumPy array with sizes |
+
+---
+
+## 14. Command Reference
+
+### Main Commands
+
+```bash
+hlplot --help              # Main help
+hlplot plot --help         # Connectivity plot
+hlplot modular --help      # Modularity visualization
+hlplot batch --help        # Batch processing
+hlplot coords --help       # Coordinate utilities
+hlplot utils --help        # Matrix utilities
+```
+
+### Coordinate Commands
+
+```bash
+hlplot coords generate --help    # Extract coords from NIfTI
+hlplot coords map-subset --help  # Map ROI subset
+hlplot coords load --help        # Inspect coordinates
+hlplot coords extract --help     # Simple extraction (no labels)
+```
+
+### Utility Commands
+
+```bash
+hlplot utils info --help       # Matrix information
+hlplot utils validate --help   # Validate file compatibility
+hlplot utils threshold --help  # Threshold matrix
+hlplot utils convert --help    # Convert file formats
+```
+
+### Camera View Presets
 
 | View | Description |
 |------|-------------|
@@ -672,49 +695,66 @@ hlplot modular \
 
 ---
 
-## Running All Tests
+## Complete Pipeline Example
 
-To run all tests in sequence, save this as a batch file:
+Run the full pipeline from NIfTI to visualization:
 
 ```bash
-# Create output directory
-mkdir tutorial_cli_output
+# 1. Create output directory
+mkdir -p output
 
-# Prerequisites: Map coordinates
-hlplot coords map-subset --coords "C:\Users\Azad Azargushasb\Research\roi_coordinates\atlas_170_coordinates\atlas_170_coordinates_comma.csv" --subset "node and edges\total.node" --output-dir "tutorial_cli_output" --name "atlas_28_mapped"
+# 2. Generate 170 ROI coordinates from NIfTI (optional - already provided)
+hlplot coords generate \
+  --volume brain_atlas_170.nii \
+  --labels atlas_170_labels.txt \
+  --output-dir output \
+  --name atlas_170_generated
 
-# Test 1: Basic plot with edge file
-hlplot plot --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" --coords "tutorial_cli_output\atlas_28_mapped_comma.csv" --matrix "node and edges\total(1).edge" --output "tutorial_cli_output\test1_edge_file_toggle.html" --title "Test 1: Edge File + Pos/Neg Toggling" --node-size 10 --edge-width-min 1.0 --edge-width-max 10.0 --camera superior --hide-nodes-with-hidden-edges
+# 3. Map to 28-ROI subset
+hlplot coords map-subset \
+  --coords atlas_170_coordinates.csv \
+  --subset node_edge_28/rois_28.node \
+  --output-dir output \
+  --name atlas_28
 
-# Test 4: Fixed edge width
-hlplot plot --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" --matrix "k5_data\state_0\connectivity_matrix.csv" --output "tutorial_cli_output\test4_fixed_edge_width.html" --title "Test 4: Fixed Edge Width" --node-size 10 --edge-width-fixed 2.0 --camera anterior
+# 4. Create basic visualization
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge \
+  --output output/brain_28.html \
+  --title "28-ROI Brain Network"
 
-# Test 5a: PNG export
-hlplot plot --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" --matrix "k5_data\state_0\connectivity_matrix.csv" --output "tutorial_cli_output\test5a_png_export.html" --title "Test 5a: PNG Export" --camera superior --export-image "tutorial_cli_output\test5a_brain_network.png" --image-dpi 300
+# 5. Map to 114-ROI subset
+hlplot coords map-subset \
+  --coords atlas_170_coordinates.csv \
+  --subset atlas_114_labels.txt \
+  --output-dir output \
+  --name atlas_114
 
-# Test 6a: Clean export
-hlplot plot --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" --coords "tutorial_cli_output\atlas_28_mapped_comma.csv" --matrix "node and edges\total(1).edge" --output "tutorial_cli_output\test6a_clean.html" --camera superior --export-image "tutorial_cli_output\test6a_clean.png" --export-no-title --export-no-legend
+# 6. Create modularity visualization
+hlplot modular \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_114_comma.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --modules k5_state_0/module_assignments.csv \
+  --output output/modularity_114.html \
+  --title "114-ROI Modularity" \
+  --q-score 0.452 \
+  --z-score 3.21
 
-# Test 8a: Module colors
-hlplot plot --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" --matrix "k5_data\state_0\connectivity_matrix.csv" --output "tutorial_cli_output\test8a_module_colors.html" --title "Test 8a: Module Colors" --node-color "k5_data\state_0\module_assignments.csv" --camera oblique
-
-# Test 9a: Modularity visualization
-hlplot modular --mesh "C:\Users\Azad Azargushasb\Research\brain_filled_3_smoothed.gii" --coords "G:\My Drive\research stim data cci\atlas_114_mapped_comma.csv" --matrix "k5_data\state_0\connectivity_matrix.csv" --modules "k5_data\state_0\module_assignments.csv" --output "tutorial_cli_output\test9a_modularity.html" --title "Brain Network Modularity" --q-score 0.452 --z-score 3.21 --camera oblique
+# 7. Export publication figure
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_114_comma.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --output output/publication.html \
+  --node-color k5_state_0/module_assignments.csv \
+  --camera anterior \
+  --export-image output/publication.pdf \
+  --export-no-title \
+  --export-no-legend
 ```
-
----
-
-## Notes
-
-1. **File Paths**: All paths are relative to the `test_files` directory unless specified as absolute paths.
-
-2. **Windows Paths**: Use backslashes (`\`) or forward slashes (`/`) for paths on Windows.
-
-3. **Spaces in Paths**: Wrap paths containing spaces in quotes.
-
-4. **Vector Node Sizes**: The CLI currently supports fixed node sizes or sizes from a CSV file. For computed vector sizes (like scaling by participation coefficient), use the Python API.
-
-5. **Module File Format**: The module assignments CSV should have at minimum a `module` column with integer values (1-indexed).
 
 ---
 
