@@ -98,6 +98,13 @@ from .roi_coordinates import (
     load_matrix_replace_nan
 )
 
+# Folder-combining helpers (BrainNet Viewer .edge / .node files)
+from .combine import (
+    combine_edge_folder,
+    combine_node_folder,
+    combine_node_edge_folder,
+)
+
 # Define what gets exported with "from HarrisLabPlotting import *"
 __all__ = [
     # Version info
@@ -144,4 +151,9 @@ __all__ = [
     "map_coordinate",
     "load_and_clean_coordinates",
     "load_matrix_replace_nan",
+
+    # Folder combining
+    "combine_edge_folder",
+    "combine_node_folder",
+    "combine_node_edge_folder",
 ]
