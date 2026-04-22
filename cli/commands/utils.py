@@ -30,27 +30,61 @@ def utils():
               help="Keep edges above this percentile (0-100).")
 @click.option("--absolute", default=None, type=float,
               help="Keep edges with absolute weight above this value.")
-def threshold_cmd(matrix, output, top_n, percentile, absolute):
+@click.option("--keep-sign", default="both",
+              type=click.Choice(["both", "positive", "negative"], case_sensitive=False),
+              help=(
+                  "Restrict the matrix to a single sign before/along with the magnitude "
+                  "threshold. 'both' (default) keeps positive and negative edges. "
+                  "'positive' zeroes out every entry < 0, keeping only positive edges. "
+                  "'negative' zeroes out every entry > 0, keeping only negative edges "
+                  "(their original sign is preserved). "
+                  "Combine freely with --top-n / --percentile / --absolute: the sign "
+                  "filter is applied FIRST, then the magnitude threshold is applied to "
+                  "the remaining entries (so e.g. --keep-sign positive --top-n 50 keeps "
+                  "the 50 strongest positive edges)."
+              ))
+def threshold_cmd(matrix, output, top_n, percentile, absolute, keep_sign):
     """
     Threshold a connectivity matrix.
 
-    Apply thresholding to keep only the strongest connections.
-    Only one threshold method can be used at a time.
+    Apply thresholding to keep only the strongest connections, optionally
+    restricted to a single sign (positive-only or negative-only).
+
+    Exactly one magnitude threshold method (--top-n, --percentile, or
+    --absolute) must be specified. The --keep-sign flag is independent and
+    can be combined with any of them: the sign filter is applied first,
+    then the magnitude threshold runs on the remaining entries.
 
     \b
     Examples:
-      # Keep top 100 edges
+      # Keep top 100 edges of any sign
       hlplot utils threshold --matrix conn.npy --output thresh.npy --top-n 100
 
-      # Keep top 10% of edges
+      # Keep top 10% of edges of any sign
       hlplot utils threshold --matrix conn.npy --output thresh.npy --percentile 90
 
       # Keep edges above absolute value 0.5
       hlplot utils threshold --matrix conn.npy --output thresh.npy --absolute 0.5
+
+      # Keep ONLY positive edges (zero out all negatives)
+      hlplot utils threshold --matrix conn.npy --output pos.npy \\
+        --keep-sign positive --absolute 0
+
+      # Keep the 50 strongest POSITIVE edges
+      hlplot utils threshold --matrix conn.npy --output pos50.npy \\
+        --keep-sign positive --top-n 50
+
+      # Keep ONLY negative edges above |0.3|
+      hlplot utils threshold --matrix conn.npy --output neg.npy \\
+        --keep-sign negative --absolute 0.3
     """
     try:
         import numpy as np
-        from HarrisLabPlotting import threshold_matrix_top_n, load_connectivity_input
+        from HarrisLabPlotting import (
+            threshold_matrix_top_n,
+            filter_matrix_by_sign,
+            load_connectivity_input,
+        )
 
         # Check that exactly one threshold method is specified
         methods = [top_n is not None, percentile is not None, absolute is not None]
@@ -64,7 +98,18 @@ def threshold_cmd(matrix, output, top_n, percentile, absolute):
 
         # Count original edges
         original_edges = np.sum(mat != 0)
-        print_info(f"Original non-zero edges: {original_edges}")
+        n_pos = int(np.sum(mat > 0))
+        n_neg = int(np.sum(mat < 0))
+        print_info(f"Original non-zero edges: {original_edges} ({n_pos} positive, {n_neg} negative)")
+
+        # Apply the sign filter FIRST (so subsequent magnitude thresholds
+        # operate only on the entries we want to keep).
+        keep_sign = keep_sign.lower()
+        if keep_sign != "both":
+            print_info(f"Applying sign filter: keep_sign='{keep_sign}'")
+            mat = filter_matrix_by_sign(mat, keep_sign=keep_sign)
+            after_sign = int(np.sum(mat != 0))
+            print_info(f"Edges after sign filter: {after_sign}")
 
         if top_n is not None:
             print_info(f"Thresholding to top {top_n} edges...")
@@ -73,9 +118,14 @@ def threshold_cmd(matrix, output, top_n, percentile, absolute):
         elif percentile is not None:
             print_info(f"Thresholding to top {100-percentile:.1f}% of edges...")
             abs_mat = np.abs(mat)
-            threshold = np.percentile(abs_mat[abs_mat > 0], percentile)
-            result = mat.copy()
-            result[abs_mat < threshold] = 0
+            nonzero = abs_mat[abs_mat > 0]
+            if nonzero.size == 0:
+                print_warning("No non-zero entries remain to compute percentile on; output will be all zeros.")
+                result = mat.copy()
+            else:
+                threshold = np.percentile(nonzero, percentile)
+                result = mat.copy()
+                result[abs_mat < threshold] = 0
 
         else:  # absolute
             print_info(f"Thresholding with absolute value > {absolute}...")
@@ -84,7 +134,9 @@ def threshold_cmd(matrix, output, top_n, percentile, absolute):
 
         # Count remaining edges
         remaining_edges = np.sum(result != 0)
-        print_info(f"Remaining non-zero edges: {remaining_edges}")
+        rem_pos = int(np.sum(result > 0))
+        rem_neg = int(np.sum(result < 0))
+        print_info(f"Remaining non-zero edges: {remaining_edges} ({rem_pos} positive, {rem_neg} negative)")
 
         # Save result
         output_path = Path(output)

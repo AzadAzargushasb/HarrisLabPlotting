@@ -200,6 +200,72 @@ def threshold_matrix_top_n(matrix, n_edges):
     return matrix_copy
 
 
+def filter_matrix_by_sign(matrix, keep_sign='both'):
+    """
+    Zero out positive or negative entries in a connectivity matrix.
+
+    This is useful when you want to plot or analyze only the positive
+    correlations or only the negative (anti-)correlations of a matrix.
+    Entries with the unwanted sign are set to 0 (i.e. removed). Diagonal
+    elements and existing zero entries are not changed by this operation.
+
+    Parameters
+    ----------
+    matrix : np.ndarray
+        Input connectivity matrix (any shape, typically NxN).
+    keep_sign : str, optional
+        Which sign to keep. One of:
+
+        - ``'both'`` (default): no filtering, return a copy of the matrix
+          unchanged.
+        - ``'positive'``: keep only entries where ``value > 0``. All entries
+          with ``value < 0`` are set to 0.
+        - ``'negative'``: keep only entries where ``value < 0``. All entries
+          with ``value > 0`` are set to 0. The remaining negative values
+          keep their original sign (they are NOT made positive).
+
+    Returns
+    -------
+    np.ndarray
+        A new matrix of the same shape as ``matrix`` with the unwanted
+        sign zeroed out. The original matrix is not modified.
+
+    Raises
+    ------
+    ValueError
+        If ``keep_sign`` is not one of ``'both'``, ``'positive'``,
+        ``'negative'``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> m = np.array([[0,  0.5, -0.3],
+    ...               [0.5, 0,   0.2],
+    ...               [-0.3, 0.2, 0]])
+    >>> filter_matrix_by_sign(m, 'positive')
+    array([[0. , 0.5, 0. ],
+           [0.5, 0. , 0.2],
+           [0. , 0.2, 0. ]])
+    >>> filter_matrix_by_sign(m, 'negative')
+    array([[ 0. ,  0. , -0.3],
+           [ 0. ,  0. ,  0. ],
+           [-0.3,  0. ,  0. ]])
+    """
+    if keep_sign not in ('both', 'positive', 'negative'):
+        raise ValueError(
+            f"keep_sign must be one of 'both', 'positive', 'negative'; "
+            f"got {keep_sign!r}"
+        )
+
+    result = matrix.copy()
+    if keep_sign == 'positive':
+        result[result < 0] = 0
+    elif keep_sign == 'negative':
+        result[result > 0] = 0
+    # 'both' -> no change
+    return result
+
+
 def load_node_file(node_file_path: str) -> pd.DataFrame:
     """
     Load a BrainNet Viewer node file.
@@ -941,6 +1007,276 @@ def convert_node_color_input(
             )
 
         return list(arr), None, None
+
+
+def load_edge_color_matrix(
+    color_input: Union[str, np.ndarray, pd.DataFrame],
+    n_expected_nodes: Optional[int] = None
+) -> Tuple[np.ndarray, Optional[Dict]]:
+    """
+    Load a per-edge color matrix used to color edges in a brain connectivity plot.
+
+    The color matrix has the SAME shape as the connectivity matrix
+    (``n_nodes x n_nodes``). Each cell ``[i, j]`` specifies the color to use
+    when drawing the edge between ROI i and ROI j. The cell can hold either:
+
+    1. **A color string** -- a CSS named color (``"red"``), a hex code
+       (``"#FF0000"``, ``"#f00"``), or an ``"rgb(R,G,B)"`` /
+       ``"rgba(R,G,B,A)"`` string. The string is used as-is for the edge.
+    2. **An integer label** -- a categorical class id (e.g. ``1``, ``2``,
+       ``3``). All edges sharing the same integer get the same auto-generated
+       color from a distinct palette (the same palette as
+       :func:`generate_module_colors`). This lets you label edges with
+       integer "edge groups" without having to pick colors yourself.
+
+    Empty cells, ``NaN`` and the integer ``0`` are treated as "no color"
+    and the corresponding edge is **skipped** when drawing -- exactly as if
+    that cell were missing from the connectivity matrix.
+
+    Parameters
+    ----------
+    color_input : str, np.ndarray, or pd.DataFrame
+        Color matrix or path to a file containing one. Supported file
+        formats are ``.csv``, ``.txt`` (delimiter auto-detected) and
+        ``.npy``. CSVs are loaded as strings; integer columns are auto-
+        promoted to a categorical palette.
+    n_expected_nodes : int, optional
+        Expected dimensionality. If provided, the matrix must be square
+        with this size; otherwise a :class:`ValueError` is raised.
+
+    Returns
+    -------
+    color_matrix : np.ndarray of dtype object
+        ``n_nodes x n_nodes`` array of color strings (or empty string ``""``
+        for cells that should be skipped). All non-empty cells are
+        guaranteed to be valid color strings ready to hand to plotly.
+    label_to_color : dict or None
+        When the input was integer-categorical, a mapping
+        ``{int_label: color_string}`` describing how labels were assigned
+        to colors. ``None`` when the input was already raw color strings.
+
+    Raises
+    ------
+    ValueError
+        If the loaded matrix is not square, doesn't match
+        ``n_expected_nodes``, or contains values that are neither valid
+        colors nor integers.
+    """
+    # ---- 1. Load raw matrix ----
+    if isinstance(color_input, np.ndarray):
+        raw = color_input
+    elif isinstance(color_input, pd.DataFrame):
+        raw = color_input.values
+    elif isinstance(color_input, str):
+        path = Path(color_input)
+        if not path.exists():
+            raise FileNotFoundError(f"Edge color matrix file not found: {color_input}")
+        suffix = path.suffix.lower()
+        if suffix == '.npy':
+            raw = np.load(color_input, allow_pickle=True)
+        elif suffix in ('.csv', '.txt'):
+            with open(color_input, 'r') as f:
+                first_line = f.readline()
+            delimiter = '\t' if '\t' in first_line else ','
+            # Always read as strings so '#FF0000' / 'red' / '1' all parse.
+            df = pd.read_csv(color_input, sep=delimiter, header=None, dtype=str)
+            raw = df.values
+        else:
+            raise ValueError(
+                f"Unsupported edge color matrix format: {suffix}. "
+                f"Expected .csv, .txt, or .npy."
+            )
+    else:
+        raise TypeError(
+            f"Unsupported color_input type: {type(color_input)}. "
+            f"Expected np.ndarray, pd.DataFrame, or file path string."
+        )
+
+    if raw.ndim != 2 or raw.shape[0] != raw.shape[1]:
+        raise ValueError(
+            f"Edge color matrix must be square. Got shape: {raw.shape}"
+        )
+
+    if n_expected_nodes is not None and raw.shape[0] != n_expected_nodes:
+        raise ValueError(
+            f"Edge color matrix size ({raw.shape[0]}) does not match "
+            f"expected number of nodes ({n_expected_nodes})"
+        )
+
+    n = raw.shape[0]
+    out = np.full((n, n), "", dtype=object)
+
+    # ---- 2. Try to interpret as integer categorical labels ----
+    # If every non-empty cell can be parsed as an integer, treat as
+    # categorical and assign colors from generate_module_colors.
+    def _is_empty(v):
+        if v is None:
+            return True
+        if isinstance(v, float) and np.isnan(v):
+            return True
+        if isinstance(v, str) and v.strip() == "":
+            return True
+        return False
+
+    flat = []
+    all_int = True
+    for i in range(n):
+        for j in range(n):
+            v = raw[i, j]
+            if _is_empty(v):
+                continue
+            try:
+                iv = int(float(v))
+                # Treat 0 as "no color"
+                if iv == 0:
+                    continue
+                flat.append(iv)
+            except (ValueError, TypeError):
+                all_int = False
+                break
+        if not all_int:
+            break
+
+    label_to_color: Optional[Dict] = None
+
+    if all_int and flat:
+        unique_labels = sorted(set(flat))
+        palette = generate_module_colors(len(unique_labels))
+        label_to_color = {lab: palette[idx] for idx, lab in enumerate(unique_labels)}
+        for i in range(n):
+            for j in range(n):
+                v = raw[i, j]
+                if _is_empty(v):
+                    continue
+                try:
+                    iv = int(float(v))
+                except (ValueError, TypeError):
+                    continue
+                if iv == 0:
+                    continue
+                out[i, j] = label_to_color[iv]
+        return out, label_to_color
+
+    # ---- 3. Otherwise interpret as raw color strings ----
+    bad: List[Tuple[int, int, object]] = []
+    for i in range(n):
+        for j in range(n):
+            v = raw[i, j]
+            if _is_empty(v):
+                continue
+            # Numeric 0 (e.g. from a .npy of zeros) -> skip
+            if isinstance(v, (int, float)) and v == 0:
+                continue
+            sv = str(v).strip()
+            if sv == "" or sv == "0":
+                continue
+            if not is_valid_color(sv):
+                bad.append((i, j, v))
+                if len(bad) >= 5:
+                    break
+            else:
+                out[i, j] = sv
+        if len(bad) >= 5:
+            break
+
+    if bad:
+        raise ValueError(
+            f"Edge color matrix contains values that are neither valid colors "
+            f"nor integer labels. First offending cells (i, j, value): {bad}. "
+            f"Use CSS color names ('red'), hex codes ('#FF0000'), 'rgb(...)' "
+            f"strings, or integer labels (1, 2, 3, ...)."
+        )
+
+    return out, None
+
+
+def transform_pvalue_matrix(
+    pvalue_matrix: np.ndarray,
+    pvalue_threshold: float = 0.05,
+    sign_matrix: Optional[np.ndarray] = None,
+    epsilon: float = 1e-300,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Convert a matrix of p-values into a "weight" matrix suitable for plotting.
+
+    The transform is ``-log10(p)``. This is the standard way to visualise
+    significance and is naturally bounded for the p-values that come out of
+    typical experiments:
+
+    ===========  =============
+    p-value      -log10(p)
+    ===========  =============
+    0.05          1.30
+    0.01          2.00
+    0.001         3.00
+    0.0001        4.00
+    0.00001       5.00
+    ===========  =============
+
+    Compared with ``1/p``, this transform avoids exploding to huge values
+    (``1/0.002 = 500``) and instead grows logarithmically, which makes the
+    edge widths in the brain plot stay readable.
+
+    Parameters
+    ----------
+    pvalue_matrix : np.ndarray
+        Square matrix of p-values. Cells should normally be in ``(0, 1]``.
+        Cells with ``NaN``, values ``<= 0`` or values ``> 1`` are treated
+        as "no edge" and zeroed out in the result.
+    pvalue_threshold : float, optional
+        Cells with ``p > pvalue_threshold`` are zeroed out (i.e. not drawn).
+        Default ``0.05``. Set to ``1.0`` to keep every p-value.
+    sign_matrix : np.ndarray, optional
+        Optional matrix of the same shape as ``pvalue_matrix`` containing the
+        sign of the underlying effect (typically ``+1`` for positive,
+        ``-1`` for negative, ``0`` for unsigned). When provided, the
+        returned weight matrix is multiplied by ``sign(sign_matrix)`` so
+        that positive effects come out as positive ``-log10(p)`` values
+        and negative effects come out as negative ``-log10(p)`` values.
+        This is what makes the downstream pos/neg edge coloring work for
+        signed p-values.
+    epsilon : float, optional
+        Small floor used to avoid ``-log10(0) = inf`` for cells with
+        exactly ``p == 0``. Default ``1e-300``.
+
+    Returns
+    -------
+    weight_matrix : np.ndarray
+        ``-log10(p)`` (signed if ``sign_matrix`` was provided), with cells
+        above ``pvalue_threshold`` or otherwise invalid set to 0.
+    pvalue_clean : np.ndarray
+        The original p-value matrix with the same cells zeroed out, so the
+        caller can still display the raw p-value in hover text.
+    """
+    p = np.array(pvalue_matrix, dtype=float, copy=True)
+    pclean = np.array(pvalue_matrix, dtype=float, copy=True)
+
+    invalid = (
+        np.isnan(p)
+        | (p <= 0)
+        | (p > 1)
+        | (p > pvalue_threshold)
+    )
+
+    p_safe = np.where(invalid, 1.0, np.maximum(p, epsilon))
+    weights = -np.log10(p_safe)
+    weights[invalid] = 0.0
+    pclean[invalid] = 0.0
+
+    if sign_matrix is not None:
+        s = np.array(sign_matrix, dtype=float, copy=False)
+        if s.shape != weights.shape:
+            raise ValueError(
+                f"sign_matrix shape {s.shape} does not match pvalue_matrix "
+                f"shape {weights.shape}"
+            )
+        sign = np.sign(s)
+        # Where the sign is 0 we leave the magnitude alone (treated as
+        # positive so it still shows up).
+        sign = np.where(sign == 0, 1.0, sign)
+        weights = weights * sign
+
+    return weights, pclean
 
 
 def get_node_edge_connectivity(
