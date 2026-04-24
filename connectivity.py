@@ -829,6 +829,134 @@ def _resolve_mesh_lighting(
     return base or None
 
 
+def _export_figure_static(
+    fig,
+    export_image,
+    multi_view=None,
+    multi_view_panel_size=(800, 800),
+    multi_view_panel_labels=None,
+    multi_view_keep_first_legend=True,
+    multi_view_zoom=1.0,
+    image_dpi=300,
+    image_format='png',
+    plot_title='',
+    export_show_title=True,
+    export_show_legend=True,
+):
+    """Render ``fig`` to a static image file.
+
+    When ``multi_view`` is set, ``export_image`` is reinterpreted as the
+    path of a stitched 1xN PNG produced by
+    :func:`export_multi_view_stitched_png`. Otherwise the figure is
+    exported as a single PNG/SVG/PDF/JPEG/WEBP via kaleido.
+
+    Used by both ``create_brain_connectivity_plot`` and
+    ``create_brain_connectivity_plot_with_modularity`` so the modular
+    plot's per-module trace rebuild is reflected in the exported image.
+    """
+    if multi_view:
+        if export_image is None:
+            print(
+                "Warning: multi_view was set but export_image is None; "
+                "no stitched PNG will be written. Pass export_image=... "
+                "to specify the output path."
+            )
+            return
+        stitched_path = Path(export_image)
+        if stitched_path.suffix.lower() not in ('', '.png'):
+            print(
+                f"Note: multi_view stitched export is PNG-only. "
+                f"Forcing extension on {stitched_path} to .png."
+            )
+            stitched_path = stitched_path.with_suffix('.png')
+        print(
+            f"Multi-view: rendering {len(multi_view)} panels into "
+            f"{stitched_path}"
+        )
+        export_multi_view_stitched_png(
+            fig,
+            output_path=stitched_path,
+            views=list(multi_view),
+            panel_width=multi_view_panel_size[0],
+            panel_height=multi_view_panel_size[1],
+            image_dpi=image_dpi,
+            title=plot_title if export_show_title else "",
+            panel_labels=multi_view_panel_labels,
+            keep_first_legend=multi_view_keep_first_legend
+                              and export_show_legend,
+            zoom=multi_view_zoom,
+        )
+        print(f"Wrote stitched multi-view PNG to: {stitched_path}")
+        return
+
+    if export_image is None:
+        return
+
+    export_path = Path(export_image)
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if export_path.suffix:
+        fmt = export_path.suffix[1:].lower()
+    else:
+        fmt = image_format.lower()
+        export_path = export_path.with_suffix(f'.{fmt}')
+
+    if fmt not in ['png', 'svg', 'pdf', 'jpeg', 'webp']:
+        print(f"Warning: Unsupported format '{fmt}', using PNG")
+        fmt = 'png'
+        export_path = export_path.with_suffix('.png')
+
+    fig_dict = fig.to_dict()
+    if 'layout' in fig_dict:
+        fig_dict['layout']['updatemenus'] = []
+        fig_dict['layout']['annotations'] = []
+        fig_dict['layout']['paper_bgcolor'] = 'white'
+        fig_dict['layout']['plot_bgcolor'] = 'white'
+        if not export_show_title:
+            fig_dict['layout']['title'] = {'text': ''}
+        if not export_show_legend:
+            fig_dict['layout']['showlegend'] = False
+
+    fig_export = go.Figure(fig_dict)
+
+    if fmt in ['svg', 'pdf']:
+        scale = 1.0
+    else:
+        scale = min(image_dpi / 72.0, 8.0)
+        if image_dpi / 72.0 > 8.0:
+            print("Note: Scale capped at 8x (effective ~576 DPI) to avoid memory issues")
+
+    print(f"Exporting {fmt.upper()} image...")
+
+    export_width = 1200
+    export_height = 900
+
+    try:
+        fig_export.write_image(
+            str(export_path),
+            format=fmt,
+            width=export_width,
+            height=export_height,
+            scale=scale,
+        )
+        if export_path.exists():
+            file_size = export_path.stat().st_size
+            print(f"Exported static image to: {export_path}")
+            print(f"  Format: {fmt.upper()}, Size: {file_size/1024:.1f} KB")
+            if fmt not in ['svg', 'pdf']:
+                print(f"  Dimensions: {int(export_width*scale)}x{int(export_height*scale)} pixels")
+        else:
+            print(f"ERROR: Export failed - file was not created at {export_path}")
+    except Exception as e:
+        print(f"ERROR exporting image: {e}")
+        print("=" * 60)
+        print("Troubleshooting:")
+        print("1. Make sure kaleido is installed: pip install -U kaleido")
+        print("2. For PDF export, you may also need: pip install -U kaleido[pdf]")
+        print("3. Try using a lower image_dpi value if memory issues occur")
+        print("=" * 60)
+
+
 def create_brain_connectivity_plot(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -1909,126 +2037,23 @@ def create_brain_connectivity_plot(
 
     print(f"Saved interactive visualization to: {save_path}")
 
-    # Export static image if requested
-    # ----- Multi-view export branch ----------------------------------
-    # When the caller passed `multi_view`, we use the caller-supplied
-    # `export_image` path as the destination for a stitched 1xN PNG
-    # strip and skip the regular single-image export entirely. This
-    # mirrors the documented behavior: --export-image is reinterpreted
-    # as the stitched output path when --multi-view is set.
-    if multi_view:
-        if export_image is None:
-            print(
-                "Warning: multi_view was set but export_image is None; "
-                "no stitched PNG will be written. Pass export_image=... "
-                "to specify the output path."
-            )
-        else:
-            stitched_path = Path(export_image)
-            if stitched_path.suffix.lower() not in ('', '.png'):
-                print(
-                    f"Note: multi_view stitched export is PNG-only. "
-                    f"Forcing extension on {stitched_path} to .png."
-                )
-                stitched_path = stitched_path.with_suffix('.png')
-            print(
-                f"Multi-view: rendering {len(multi_view)} panels into "
-                f"{stitched_path}"
-            )
-            export_multi_view_stitched_png(
-                fig,
-                output_path=stitched_path,
-                views=list(multi_view),
-                panel_width=multi_view_panel_size[0],
-                panel_height=multi_view_panel_size[1],
-                image_dpi=image_dpi,
-                title=plot_title if export_show_title else "",
-                panel_labels=multi_view_panel_labels,
-                keep_first_legend=multi_view_keep_first_legend
-                                  and export_show_legend,
-                zoom=multi_view_zoom,
-            )
-            print(f"Wrote stitched multi-view PNG to: {stitched_path}")
-    elif export_image is not None:
-        export_path = Path(export_image)
-        export_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Determine format from path or parameter
-        if export_path.suffix:
-            fmt = export_path.suffix[1:].lower()  # Remove leading dot
-        else:
-            fmt = image_format.lower()
-            export_path = export_path.with_suffix(f'.{fmt}')
-
-        if fmt not in ['png', 'svg', 'pdf', 'jpeg', 'webp']:
-            print(f"Warning: Unsupported format '{fmt}', using PNG")
-            fmt = 'png'
-            export_path = export_path.with_suffix('.png')
-
-        # Create a deep copy of the figure for export by serializing to dict first
-        # This ensures the export figure is completely independent of the original
-        fig_dict = fig.to_dict()
-
-        # Remove interactive elements from the layout dict before creating figure
-        if 'layout' in fig_dict:
-            fig_dict['layout']['updatemenus'] = []  # Remove dropdown menu
-            fig_dict['layout']['annotations'] = []  # Remove camera controls text
-            fig_dict['layout']['paper_bgcolor'] = 'white'
-            fig_dict['layout']['plot_bgcolor'] = 'white'
-
-            # Optionally hide title
-            if not export_show_title:
-                fig_dict['layout']['title'] = {'text': ''}
-
-            # Optionally hide legend
-            if not export_show_legend:
-                fig_dict['layout']['showlegend'] = False
-
-        fig_export = go.Figure(fig_dict)
-
-        # Calculate scale factor for DPI (base is 72 DPI)
-        # For vector formats (SVG, PDF), use scale=1 since they're resolution-independent
-        # For raster formats (PNG, JPEG), cap scale at 8 (effective ~576 DPI)
-        if fmt in ['svg', 'pdf']:
-            scale = 1.0  # Vector formats don't need DPI scaling
-        else:
-            scale = min(image_dpi / 72.0, 8.0)
-            if image_dpi / 72.0 > 8.0:
-                print(f"Note: Scale capped at 8x (effective ~576 DPI) to avoid memory issues")
-
-        print(f"Exporting {fmt.upper()} image...")
-
-        # Fixed export dimensions for consistency
-        export_width = 1200
-        export_height = 900
-
-        try:
-            fig_export.write_image(
-                str(export_path),
-                format=fmt,
-                width=export_width,
-                height=export_height,
-                scale=scale
-            )
-
-            # Verify the file was created
-            if export_path.exists():
-                file_size = export_path.stat().st_size
-                print(f"Exported static image to: {export_path}")
-                print(f"  Format: {fmt.upper()}, Size: {file_size/1024:.1f} KB")
-                if fmt not in ['svg', 'pdf']:
-                    print(f"  Dimensions: {int(export_width*scale)}x{int(export_height*scale)} pixels")
-            else:
-                print(f"ERROR: Export failed - file was not created at {export_path}")
-
-        except Exception as e:
-            print(f"ERROR exporting image: {e}")
-            print("=" * 60)
-            print("Troubleshooting:")
-            print("1. Make sure kaleido is installed: pip install -U kaleido")
-            print("2. For PDF export, you may also need: pip install -U kaleido[pdf]")
-            print("3. Try using a lower image_dpi value if memory issues occur")
-            print("=" * 60)
+    # Export static image if requested. The single-image vs multi-view
+    # branching lives inside the helper so the modular plot can call the
+    # same code path AFTER it has rebuilt traces per-module.
+    _export_figure_static(
+        fig,
+        export_image=export_image,
+        multi_view=multi_view,
+        multi_view_panel_size=multi_view_panel_size,
+        multi_view_panel_labels=multi_view_panel_labels,
+        multi_view_keep_first_legend=multi_view_keep_first_legend,
+        multi_view_zoom=multi_view_zoom,
+        image_dpi=image_dpi,
+        image_format=image_format,
+        plot_title=plot_title,
+        export_show_title=export_show_title,
+        export_show_legend=export_show_legend,
+    )
 
     # Calculate graph statistics
     graph_stats = {
@@ -2408,7 +2433,11 @@ def create_brain_connectivity_plot_with_modularity(
         show_only_connected_nodes=show_only_connected_nodes,
         node_metrics=node_metrics,
         hide_nodes_with_hidden_edges=hide_nodes_with_hidden_edges,
-        export_image=export_image,
+        # Suppress export from the inner call: the inner figure has
+        # sign-mode edges, but the outer function rebuilds them per
+        # module below. The export must happen on the rebuilt figure,
+        # so we run it ourselves at the end of this function.
+        export_image=None,
         image_format=image_format,
         image_dpi=image_dpi,
         export_show_title=export_show_title,
@@ -2429,7 +2458,7 @@ def create_brain_connectivity_plot_with_modularity(
         show_size_legend=show_size_legend,
         show_width_legend=show_width_legend,
         node_size_legend_metric=node_size_legend_metric,
-        multi_view=multi_view,
+        multi_view=None,
         multi_view_panel_size=multi_view_panel_size,
         multi_view_panel_labels=multi_view_panel_labels,
         multi_view_keep_first_legend=multi_view_keep_first_legend,
@@ -2811,5 +2840,23 @@ def create_brain_connectivity_plot_with_modularity(
     if show_camera_readout:
         write_html_kwargs['post_script'] = _build_camera_readout_js()
     fig.write_html(save_path, **write_html_kwargs)
+
+    # Export static image now that the per-module traces are in place.
+    # The inner call was passed export_image=None / multi_view=None, so
+    # this is the only export step and it sees the correct figure.
+    _export_figure_static(
+        fig,
+        export_image=export_image,
+        multi_view=multi_view,
+        multi_view_panel_size=multi_view_panel_size,
+        multi_view_panel_labels=multi_view_panel_labels,
+        multi_view_keep_first_legend=multi_view_keep_first_legend,
+        multi_view_zoom=multi_view_zoom,
+        image_dpi=image_dpi,
+        image_format=image_format,
+        plot_title=full_title,
+        export_show_title=export_show_title,
+        export_show_legend=export_show_legend,
+    )
 
     return fig, graph_stats

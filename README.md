@@ -1,5 +1,7 @@
 # HarrisLabPlotting
 
+![Brain Network Modularity — left / superior / posterior views](docs/images/modularity_hero.png)
+
 A Python + CLI toolkit for publication-quality **3D interactive brain connectivity
 visualizations**. Plotly-based HTML output, PNG/SVG/PDF static export, and a complete
 pipeline from raw NIfTI atlas volumes all the way to a finished figure.

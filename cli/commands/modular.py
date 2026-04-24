@@ -303,7 +303,7 @@ CAMERA_VIEWS = [
                   "Render a stitched 1xN PNG strip of the brain from "
                   "multiple camera angles INSTEAD of the normal single "
                   "static export. Pass a comma-separated list of view "
-                  "names, e.g. --multi-view \"left,superior,anterior\". "
+                  "names, e.g. --multi-view \"left,superior,posterior\". "
                   "Each entry can be a built-in preset name or the name "
                   "of a custom view registered with --custom-view. The "
                   "--export-image flag is REINTERPRETED as the path of "
