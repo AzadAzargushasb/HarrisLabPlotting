@@ -1,245 +1,277 @@
 # HarrisLabPlotting
 
-A Python toolkit for creating interactive 3D brain connectivity visualizations and managing ROI (Region of Interest) coordinates from neuroimaging data.
+A Python + CLI toolkit for publication-quality **3D interactive brain connectivity
+visualizations**. Plotly-based HTML output, PNG/SVG/PDF static export, and a complete
+pipeline from raw NIfTI atlas volumes all the way to a finished figure.
 
-## Overview
+Built for neuroscience researchers working with ROI-level connectivity matrices,
+graph metrics, modularity analysis, and statistical-comparison outputs
+(e.g. GraphVar, Brain Connectivity Toolbox, NBS, GLM).
 
-This repository contains two main modules:
+Two ways to use it:
 
-1. **`brain_connectivity_vizuals.py`** - Create interactive 3D brain connectivity plots with Plotly
-2. **`roi_coordinate_tools.py`** - Extract, map, and clean ROI coordinates from brain atlases
+- **`hlplot` command-line interface** — for quick figures, batch processing, and
+  shell pipelines.
+- **`HarrisLabPlotting` Python package** — for programmatic use inside notebooks
+  and larger analysis scripts.
+
+Both APIs cover the same feature set.
+
+---
 
 ## Features
 
-### Brain Connectivity Visualization (`brain_connectivity_vizuals.py`)
+**Plotting**
+- Interactive 3D Plotly plots — rotate, zoom, hover tooltips, toggleable legends.
+- Connectivity matrices as weights (sign-colored, width scaled by `|weight|`).
+- **P-value matrices** with built-in `-log10(p)` transform, significance threshold, and optional sign matrix.
+- **Modularity plots** with module-colored nodes and sign- or module-colored edges, Q/Z scores in the title.
+- Per-node sizing from CSV/NPY, per-node color from module assignments, hover-tooltip metrics, border colors.
+- Auto **size and width legend keys**, labelable by any column in a node-metrics file.
+- 9 camera presets plus fully-custom eye/center/up cameras, and a live camera-readout overlay for picking the right angle.
+- Mesh lighting presets (`flat` / `matte` / `smooth` / `glossy` / `mirror`) plus per-knob overrides.
 
-- Interactive 3D brain mesh rendering with transparency control
-- Overlay ROI nodes with customizable colors and sizes
-- Display connectivity edges (positive/negative) with threshold filtering
-- Toggle between "All Nodes" and "Connected Only" views
-- Filter edges by sign (positive, negative, or all)
-- Modularity visualization with color-coded modules
-- Export to interactive HTML files
-- Graph statistics calculation (density, degree, hub nodes)
+**Inputs & pre-processing**
+- NIfTI atlas → per-ROI center-of-gravity coordinates (`hlplot coords generate`).
+- Map a full atlas to a study-specific subset by ROI name (`hlplot coords map-subset`).
+- Read BrainNet Viewer `.node` and `.edge` files directly; combine a folder of per-contrast `.node`/`.edge` pairs into one block-diagonal total (`hlplot combine`).
+- Accepts connectivity matrices as `.npy`, `.csv`, `.edge`, `.txt`, or `.mat`.
 
-### ROI Coordinate Tools (`roi_coordinate_tools.py`)
+**Export & automation**
+- Multi-view stitched PNG — re-render the same plot from N camera angles and stitch them into a 1×N strip in one call.
+- Clean publication export (`--export-no-title` / `--export-no-legend`) in PNG, SVG, or PDF.
+- Batch mode driven by a YAML config (`hlplot batch`).
+- Utilities: matrix info/density, file-compatibility validation, matrix thresholding, format conversion.
 
-- **`coordinate_function()`** - Extract center-of-gravity (COG) coordinates from NIfTI atlas volumes
-- **`map_coordinate()`** - Map a subset of ROIs to their coordinates, with clear reporting of unmapped ROIs
-- **`load_and_clean_coordinates()`** - Load CSV coordinates and remove rows with missing values
-- **`load_matrix_replace_nan()`** - Load connectivity matrices (.mat or .txt) and replace NaN values with zeros
+---
 
 ## Installation
 
-### Option 1: Conda (Recommended)
+Requires **Python ≥ 3.9**.
+
+### Option 1 — Conda (recommended)
 
 ```bash
-# Clone the repository
 git clone https://github.com/AzadAzargushasb/HarrisLabPlotting.git
 cd HarrisLabPlotting
 
-# Create conda environment
 conda env create -f environment.yml
-
-# Activate environment
 conda activate harris_lab_plotting
+pip install -e .
 ```
 
-### Option 2: pip
+### Option 2 — pip only
 
 ```bash
-# Clone the repository
 git clone https://github.com/AzadAzargushasb/HarrisLabPlotting.git
 cd HarrisLabPlotting
-
-# Install dependencies
-pip install -r requirements.txt
+pip install -e .
 ```
 
-## Quick Start
+### Verify
 
-### 1. Extract ROI Coordinates from Atlas
-
-```python
-import roi_coordinate_tools as rct
-
-# Extract coordinates from a NIfTI atlas file
-roi_coords = rct.coordinate_function(
-    volume_file_location="atlas.nii.gz",
-    roi_label_file="atlas_labels.txt",
-    name_of_file="my_roi_coordinates"
-)
+```bash
+hlplot --version
+hlplot --help
 ```
 
-### 2. Map Coordinates to Study-Specific ROIs
+Notes:
+- `kaleido` (included in the deps) is required for PNG/SVG/PDF static export.
+- `python-pptx` is **not** a dependency of the package — it's only used by an external example notebook that builds a PowerPoint from stitched outputs.
 
-```python
-# Map to a subset of ROIs (returns DataFrame and list of unmapped ROIs)
-mapped_coords, unmapped_rois = rct.map_coordinate(
-    original_coords_file=roi_coords,  # DataFrame or file path
-    reduced_roi_file="study_roi_list.txt",
-    name_of_file="study_specific_coordinates"
-)
+---
 
-# Check which ROIs couldn't be mapped
-if unmapped_rois:
-    print(f"Could not map: {[r['name'] for r in unmapped_rois]}")
+## What you need to make a plot
+
+Every plot consumes three inputs:
+
+| Input | Typical extensions | How to get it |
+|---|---|---|
+| Brain mesh | `.gii`, `.obj`, `.ply`, `.mz3` | Convert a NIfTI volume — see [tutorial/MESH_CREATION_GUIDE.md](tutorial/MESH_CREATION_GUIDE.md) (nii2mesh web / CLI, or Surfice). |
+| ROI coordinates | `.csv` with `cog_x, cog_y, cog_z, roi_name` | Generate with `hlplot coords generate` from a NIfTI atlas, or supply your own CSV. |
+| Connectivity matrix | `.npy`, `.csv`, `.edge`, `.txt`, `.mat` | Whatever statistical pipeline produces your matrix. Can be raw weights or p-values. |
+
+Tutorial files for all three live in [test_files/tutorial_files/](test_files/tutorial_files/) so every example in the docs is reproducible out of the box.
+
+---
+
+## Quick start
+
+The same minimal figure, both ways. Run from the repo root after installation:
+
+```bash
+cd test_files/tutorial_files
 ```
 
-### 3. Clean Coordinates (Remove Missing Values)
+### CLI
 
-```python
-# Load and clean coordinates CSV
-cleaned_coords = rct.load_and_clean_coordinates(
-    csv_file_path="coordinates.csv",
-    output_file_name="coordinates_cleaned",
-    save_directory="output"
-)
+```bash
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords atlas_114_coordinates.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --output brain_network.html \
+  --title "My Brain Network"
 ```
 
-### 4. Load Connectivity Matrix (Handle NaNs)
+Opens `brain_network.html` — an interactive 3D plot of the 114-ROI connectivity matrix on the brain mesh, with sign-colored edges and a legend you can click to toggle positive/negative edges.
+
+### Python
 
 ```python
-# Load matrix and replace NaNs with zeros
-conn_matrix = rct.load_matrix_replace_nan(
-    file_path="connectivity.mat",  # or .txt
-    replacement_value=0
-)
-```
-
-### 5. Create Brain Connectivity Visualization
-
-```python
-import brain_connectivity_vizuals as bcv
 import pandas as pd
+from HarrisLabPlotting import load_mesh_file, create_brain_connectivity_plot
 
-# Load mesh file (GIFTI format)
-vertices, faces = bcv.load_mesh_file("brain_mesh.gii")
+vertices, faces = load_mesh_file("brain_mesh.gii")
+coords = pd.read_csv("atlas_114_coordinates.csv")
 
-# Load cleaned ROI coordinates
-roi_coords_df = pd.read_csv("coordinates_cleaned_comma.csv")
-
-# Create interactive visualization
-fig, stats = bcv.create_brain_connectivity_plot(
+fig, stats = create_brain_connectivity_plot(
     vertices=vertices,
     faces=faces,
-    roi_coords_df=roi_coords_df,
-    connectivity_matrix=conn_matrix,
-    plot_title="My Brain Network",
+    roi_coords_df=coords,
+    connectivity_matrix="k5_state_0/connectivity_matrix.csv",
     save_path="brain_network.html",
-    node_size=8,
-    node_color='purple',
-    pos_edge_color='red',
-    neg_edge_color='blue',
-    edge_threshold=0.1,
-    mesh_opacity=0.3
+    plot_title="My Brain Network",
 )
-
-# Print network statistics
-print(f"Total nodes: {stats['total_nodes']}")
-print(f"Total edges: {stats['total_edges']}")
-print(f"Network density: {stats['network_density']:.4f}")
+print(f"{stats['total_nodes']} nodes, {stats['total_edges']} edges")
 ```
 
-### 6. Create Modularity Visualization
+Produces the same HTML. `fig` is a Plotly figure you can further customize; `stats` is a dict of network metrics (density, degree, hubs, etc.).
 
-```python
-# Visualize network modules with color-coded nodes
-fig, module_stats = bcv.create_modularity_visualization(
-    vertices=vertices,
-    faces=faces,
-    roi_coords_df=roi_coords_df,
-    connectivity_matrix=conn_matrix,
-    module_assignments=module_labels,  # 1D array of module IDs
-    plot_title="Network Modules",
-    save_path="modularity.html",
-    visualization_type="all"  # "all", "intra", "inter", or "nodes_only"
-)
+---
+
+## Feature tour
+
+Every capability links to the tutorial that demonstrates it — see that tutorial
+for runnable snippets, flag explanations, and expected output.
+
+**Plotting**
+- **Basic connectivity plot** — `hlplot plot` / `create_brain_connectivity_plot`. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §4–5.
+- **Modularity plot** — `hlplot modular` / `create_brain_connectivity_plot_with_modularity`, Q/Z scores, edge-color modes. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §12.
+- **P-value matrix plotting** — `--matrix-type pvalue`, `--pvalue-threshold`, `--sign-matrix`. See [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md).
+- **Size + width legend keys** — auto-generated sample-dot / sample-line keys for vector sizes and scaled widths, labelable by metric. See [tutorial/legend key and 3 view display test.ipynb](tutorial/legend%20key%20and%203%20view%20display%20test.ipynb) §1–3.
+- **Mesh lighting presets** — `--mesh-style flat|matte|smooth|glossy|mirror` plus per-knob overrides. See [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md) §10.
+
+**Inputs & pre-processing**
+- **ROI coordinate pipeline** — `hlplot coords generate` / `map-subset` / `load` / `extract` (Python: `coordinate_function`, `map_coordinate`, `load_and_clean_coordinates`). See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §2–3.
+- **BrainNet `.node` / `.edge` folder combining** — `hlplot combine` / `combine_node_edge_folder` (block-diagonal concatenation with matching stem ordering).
+- **Brain mesh creation** — converting NIfTI volumes to `.gii` / `.obj` / `.ply` / `.mz3`. See [tutorial/MESH_CREATION_GUIDE.md](tutorial/MESH_CREATION_GUIDE.md).
+
+**Export & automation**
+- **Static image export** — `--export-image` for PNG/SVG/PDF via kaleido; `--export-no-title` / `--export-no-legend` for clean figures. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §8–9.
+- **Multi-view stitched PNG** — re-render N camera angles into a single 1×N strip via `--multi-view` / `export_multi_view_stitched_png`. See [tutorial/legend key and 3 view display test.ipynb](tutorial/legend%20key%20and%203%20view%20display%20test.ipynb) §4.
+- **Camera views + custom cameras** — 9 presets, `--custom-camera-eye/center/up`, live camera-readout overlay. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §14.
+- **Batch processing** — YAML-driven `hlplot batch --config` for many subjects / contrasts. See [tutorial/README.md](tutorial/README.md) §11.
+- **Utilities** — `hlplot utils info` / `validate` / `threshold` / `convert`. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §6.
+
+---
+
+## Python API reference
+
+All names below are re-exported from `HarrisLabPlotting` and importable directly (`from HarrisLabPlotting import load_mesh_file`, …).
+
+| Area | Names | Notes |
+|---|---|---|
+| Mesh | `load_mesh_file` | Load `.gii` / `.obj` / `.ply` / `.mz3` → `(vertices, faces)`. |
+| Camera | `CameraController` | Manage 3D camera presets & custom eye/center/up views. |
+| Connectivity | `create_brain_connectivity_plot`, `create_brain_connectivity_plot_with_modularity`, `quick_brain_plot`, `export_multi_view_stitched_png` | Core plotting entry points. |
+| Modularity | `create_enhanced_modularity_visualization`, `create_interactive_camera_control_panel`, `run_enhanced_visualization_pipeline` | Advanced modularity layouts with PC/within-module-Z node roles. |
+| ROI coordinates | `coordinate_function`, `map_coordinate`, `load_and_clean_coordinates`, `load_matrix_replace_nan` | NIfTI → COG coords, subset mapping, CSV cleaning, matrix loading. |
+| Folder combining | `combine_edge_folder`, `combine_node_folder`, `combine_node_edge_folder` | Block-diagonal `.edge` + concatenated `.node` from a folder. |
+| P-value transform | `transform_pvalue_matrix` | Standalone `-log10(p)` transform with optional sign & threshold. |
+| Node/edge utilities | `load_node_file`, `load_edge_file`, `node_edge_to_roi_matrix`, `load_connectivity_input`, `load_node_metrics`, `load_edge_color_matrix` | Parsing helpers. |
+| Styling utilities | `calculate_node_size`, `calculate_edge_width`, `generate_module_colors`, `classify_node_role`, `threshold_matrix_top_n`, `filter_matrix_by_sign`, `filter_edges_by_module`, `convert_node_size_input`, `convert_node_color_input` | Shared helpers used by the plot functions. |
+| Loaders | `NetNeurotoolsModularityLoader` | Read netneurotools modularity summary CSVs. |
+
+For full signatures, use `help(name)` in a Python shell or read the module source — [connectivity.py](connectivity.py), [modularity.py](modularity.py), [roi_coordinates.py](roi_coordinates.py), [utils.py](utils.py), [combine.py](combine.py), [loaders.py](loaders.py), [mesh.py](mesh.py), [camera.py](camera.py).
+
+---
+
+## CLI reference
+
+Run `hlplot <command> --help` for the full flag list of any sub-command.
+
+| Command | Purpose |
+|---|---|
+| `hlplot plot` | Interactive 3D connectivity plot from a mesh + coords + matrix. Supports weight mode and p-value mode. |
+| `hlplot modular` | Modularity plot with module-colored nodes; optional Q/Z title, sign- or module-colored edges. |
+| `hlplot batch --config <yaml>` | Render many plots from a single YAML config. |
+| `hlplot coords generate` | Extract per-ROI center-of-gravity coords from a NIfTI atlas. |
+| `hlplot coords map-subset` | Subset a full atlas coords CSV to match a `.node` / `.txt` / `.csv` ROI list. |
+| `hlplot coords load` | Inspect / validate / stat a coords file. |
+| `hlplot coords extract` | Simple extraction without a labels file. |
+| `hlplot combine` | Combine paired `.node` / `.edge` files in a folder into block-diagonal totals (sub-commands: `node`, `edge`). |
+| `hlplot utils info` | Matrix shape, density, positive/negative edge counts, symmetry check. |
+| `hlplot utils validate` | Check mesh + coords + matrix are compatible. |
+| `hlplot utils threshold` | Threshold a matrix (by value, top-N, or percentile). |
+| `hlplot utils convert` | Convert between matrix file formats. |
+| `hlplot config` | Show/manage CLI configuration defaults. |
+
+---
+
+## Documentation
+
+Everything beyond the basics lives in [tutorial/](tutorial/):
+
+- [tutorial/README.md](tutorial/README.md) — **the master walkthrough**: installation, end-to-end pipeline, parameter reference, troubleshooting.
+- [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) — every CLI flag demonstrated on the shipped 28- and 114-ROI tutorial data.
+- [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md) — p-value matrices, `-log10(p)` transform, signed p-values, per-edge color matrices.
+- [tutorial/MESH_CREATION_GUIDE.md](tutorial/MESH_CREATION_GUIDE.md) — converting a NIfTI volume into a brain mesh.
+- [tutorial/legend key and 3 view display test.ipynb](tutorial/legend%20key%20and%203%20view%20display%20test.ipynb) — size / width legend keys and multi-view stitched PNG export.
+- [tutorial/pvalue plotting tutorial.ipynb](tutorial/pvalue%20plotting%20tutorial.ipynb) — the p-value tutorial as a runnable notebook.
+- [brain connectivity example.ipynb](brain%20connectivity%20example.ipynb) — an end-to-end example at the repo root.
+
+---
+
+## Project structure
+
+```
+HarrisLabPlotting/
+├── __init__.py              Public Python API
+├── connectivity.py          create_brain_connectivity_plot (+ p-value, multi-view)
+├── modularity.py            create_brain_connectivity_plot_with_modularity
+├── mesh.py                  load_mesh_file (.gii / .obj / .ply / .mz3)
+├── camera.py                CameraController, preset + custom views
+├── roi_coordinates.py       NIfTI → coords, map-subset, cleaning
+├── combine.py               Block-diagonal .node / .edge folder combining
+├── loaders.py               netneurotools modularity loader
+├── utils.py                 Shared helpers (p-value transform, styling, I/O)
+├── cli/
+│   ├── main.py              hlplot entry point
+│   └── commands/            plot, modular, batch, coords, utils, combine, config
+├── tutorial/                Tutorials and example notebooks
+├── test_files/tutorial_files/  Reproducible fixture data for every tutorial
+└── examples/                Additional example scripts
 ```
 
-## File Formats
+---
 
-### Input Files
+## Troubleshooting
 
-| File Type | Description | Format |
-|-----------|-------------|--------|
-| Atlas Volume | NIfTI file with integer ROI labels | `.nii`, `.nii.gz` |
-| ROI Labels | Tab-delimited: `index\tname` | `.txt` |
-| Brain Mesh | GIFTI surface mesh | `.gii` |
-| Connectivity Matrix | Square matrix | `.mat`, `.txt` |
-| Coordinates CSV | ROI coordinates | `.csv` (comma or tab) |
+- **`ModuleNotFoundError: No module named 'HarrisLabPlotting'`** — activate the conda env (`conda activate harris_lab_plotting`) and run `pip install -e .` from the repo root.
+- **`Matrix size (N) differs from ROI count (M)`** — your connectivity matrix and your coords file disagree on how many ROIs there are. Use `hlplot coords map-subset` to extract coords for only the ROIs your matrix covers.
+- **Mesh appears hollow or inverted** — re-convert with different smoothing / threshold settings; see [tutorial/MESH_CREATION_GUIDE.md](tutorial/MESH_CREATION_GUIDE.md).
+- **Static image export fails (`kaleido` error)** — `pip install -U kaleido`. On some systems `kaleido==0.2.1` is the last version that works out of the box.
+- **P-value plot shows no edges** — check that `--pvalue-threshold` isn't too strict (default `0.05`) and that your matrix values actually live in `(0, 1]`. Run `hlplot utils info --matrix <file>` to see the distribution.
 
-### Output Files
+Further help: `hlplot --help`, `hlplot <command> --help`, or open an issue at
+<https://github.com/AzadAzargushasb/HarrisLabPlotting/issues>.
 
-All coordinate functions output files in three formats:
-- `.pkl` - Pandas pickle (preserves data types)
-- `_comma.csv` - Comma-delimited CSV
-- `_tab.csv` - Tab-delimited CSV
-
-## Example Notebook
-
-See `brain connectivity example.ipynb` for a complete workflow demonstrating:
-- Extracting ROI coordinates from atlas
-- Mapping to study-specific ROIs
-- Cleaning coordinates
-- Loading connectivity matrices
-- Creating interactive visualizations
-
-## API Reference
-
-### `roi_coordinate_tools.py`
-
-#### `coordinate_function(volume_file_location, roi_label_file, name_of_file=None, save_directory=".")`
-Extract ROI center-of-gravity coordinates from a NIfTI volume.
-
-#### `map_coordinate(original_coords_file, reduced_roi_file, save_directory=".", name_of_file=None)`
-Map a subset of ROIs to coordinates. Returns `(DataFrame, unmapped_rois_list)`.
-
-#### `load_and_clean_coordinates(csv_file_path, output_file_name=None, save_directory=".")`
-Load coordinates CSV and remove rows with missing values.
-
-#### `load_matrix_replace_nan(file_path, replacement_value=0)`
-Load connectivity matrix and replace NaN values.
-
-### `brain_connectivity_vizuals.py`
-
-#### `load_mesh_file(mesh_path)`
-Load GIFTI brain mesh. Returns `(vertices, faces)`.
-
-#### `create_brain_connectivity_plot(...)`
-Create interactive 3D brain connectivity visualization. Returns `(figure, graph_stats)`.
-
-#### `create_modularity_visualization(...)`
-Create modularity-colored brain visualization. Returns `(figure, module_stats)`.
-
-#### `quick_brain_plot(vertices, faces, roi_coords_df, connectivity_matrix, title, save_name)`
-Quick plotting with default parameters.
-
-## Requirements
-
-- Python >= 3.9
-- numpy >= 1.21
-- pandas >= 1.3
-- scipy >= 1.7
-- nibabel >= 4.0
-- networkx >= 2.6
-- plotly >= 5.0
-- jupyter (for notebooks)
-- kaleido (for static image export)
+---
 
 ## License
 
-MIT License
+MIT License.
 
-## Authors
+## Author
 
-Harris Lab - Brain Connectivity Analysis Tools
+Harris Lab — Brain Connectivity Analysis Tools.
 
 ## Citation
 
 If you use this software in your research, please cite:
 
 ```
-Harris Lab Plotting Tools
+HarrisLabPlotting (v1.0.0)
 https://github.com/AzadAzargushasb/HarrisLabPlotting
 ```

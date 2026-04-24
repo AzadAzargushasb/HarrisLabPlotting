@@ -47,10 +47,10 @@ jupyter = ["jupyter", "jupyterlab"]
 hlplot = "HarrisLabPlotting.cli.main:cli"
 
 [project.urls]
-Homepage = "https://github.com/harrislabcodebase/HarrisLabPlotting"
-Documentation = "https://github.com/harrislabcodebase/HarrisLabPlotting/tree/main/tutorial"
-Repository = "https://github.com/harrislabcodebase/HarrisLabPlotting"
-Issues = "https://github.com/harrislabcodebase/HarrisLabPlotting/issues"
+Homepage = "https://github.com/AzadAzargushasb/HarrisLabPlotting"
+Documentation = "https://github.com/AzadAzargushasb/HarrisLabPlotting/tree/main/tutorial"
+Repository = "https://github.com/AzadAzargushasb/HarrisLabPlotting"
+Issues = "https://github.com/AzadAzargushasb/HarrisLabPlotting/issues"
 
 [tool.setuptools]
 packages = ["HarrisLabPlotting", "HarrisLabPlotting.cli", "HarrisLabPlotting.cli.commands"]
