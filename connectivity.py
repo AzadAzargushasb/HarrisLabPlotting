@@ -24,6 +24,8 @@ from .utils import (
     load_connectivity_input,
     load_node_metrics,
     calculate_edge_width,
+    calculate_node_size,
+    classify_node_role,
     generate_module_colors,
     load_edge_color_matrix,
     transform_pvalue_matrix,
@@ -260,11 +262,24 @@ def export_multi_view_stitched_png(
                 'center': cam['center'],
                 'up': cam['up'],
             }
-            # Strip per-panel decorations
+            # Strip per-panel decorations. Annotations tagged with a
+            # name starting with "keep_" (e.g. "keep_role_legend") are
+            # preserved on the first panel ONLY when keep_first_legend
+            # is True, mirroring how the plotly legend itself is kept
+            # in the first panel only. With keep_first_legend=False the
+            # user has explicitly asked for a legend-free strip, so the
+            # role legend overlay is also stripped from every panel.
             layout['title'] = {'text': ''}
             layout['updatemenus'] = []
-            layout['annotations'] = []
             layout['shapes'] = []
+            anns = layout.get('annotations') or []
+            if keep_first_legend and i == 0:
+                layout['annotations'] = [
+                    a for a in anns
+                    if (a.get('name') or '').startswith('keep_')
+                ]
+            else:
+                layout['annotations'] = []
             if not (keep_first_legend and i == 0):
                 layout['showlegend'] = False
             # Tight per-panel margins so the brain fills the panel and
@@ -909,7 +924,15 @@ def _export_figure_static(
     fig_dict = fig.to_dict()
     if 'layout' in fig_dict:
         fig_dict['layout']['updatemenus'] = []
-        fig_dict['layout']['annotations'] = []
+        # Strip interactive UI annotations (camera-controls overlay,
+        # toolbar instructions, etc.) but preserve any annotation that
+        # was explicitly tagged for export with a name starting with
+        # "keep_" (e.g. the role legend, the edge-width legend labels).
+        anns = fig_dict['layout'].get('annotations') or []
+        fig_dict['layout']['annotations'] = [
+            a for a in anns
+            if (a.get('name') or '').startswith('keep_')
+        ]
         fig_dict['layout']['paper_bgcolor'] = 'white'
         fig_dict['layout']['plot_bgcolor'] = 'white'
         if not export_show_title:
@@ -2175,6 +2198,13 @@ def create_brain_connectivity_plot_with_modularity(
     multi_view_panel_labels: Optional[List[str]] = None,
     multi_view_keep_first_legend: bool = True,
     multi_view_zoom: float = 1.0,
+    node_roles: bool = False,
+    node_size_mode: str = 'fixed',
+    base_node_size: Optional[int] = None,
+    max_node_multiplier: float = 5.0,
+    border_width: int = 6,
+    viz_type: str = 'all',
+    inter_edge_color: Optional[str] = None,
 ) -> Tuple[go.Figure, Dict]:
     """
     Create brain connectivity visualization with modularity-based node coloring.
@@ -2328,6 +2358,53 @@ def create_brain_connectivity_plot_with_modularity(
         Camera zoom multiplier applied uniformly to every panel of the
         stitched strip. ``1.0`` (default) = no change. Higher values
         bring the camera closer (brain looks bigger).
+    node_roles : bool, optional
+        When ``True``, classify each node by its participation
+        coefficient and within-module Z-score using the cartographic
+        two-cut of Guimerà & Nunes Amaral, *Functional cartography of
+        complex metabolic networks*, **Nature** 433, 895-900 (2005),
+        https://doi.org/10.1038/nature03288. Each node is then drawn
+        as a dual-layer marker: an outer ring in the role color
+        (Connector hub / Provincial hub / Kinless hub / Non-hub
+        connector / Non-hub kinless / Peripheral / Ultra-peripheral)
+        around an inner module-colored fill. A small role legend is
+        added to the bottom-left of the plot. Requires ``node_metrics``
+        to contain ``participation_coef`` and ``within_module_zscore``
+        columns. Default ``False``.
+    node_size_mode : str, optional
+        How to compute per-node sizes when ``node_roles`` is on or
+        when explicitly requested. ``'fixed'`` (default) uses
+        ``node_size`` as-is. ``'pc'`` / ``'zscore'`` / ``'both'``
+        derive sizes dynamically from participation coefficient,
+        within-module Z-score, or a 50/50 blend of both, via
+        :func:`~HarrisLabPlotting.utils.calculate_node_size`. The
+        non-``'fixed'`` modes require ``node_metrics`` to be passed.
+    base_node_size : int, optional
+        Base size (px) used by the dynamic ``node_size_mode``. When
+        ``None`` (default), falls back to ``node_size`` if it's a
+        scalar, otherwise to 8.
+    max_node_multiplier : float, optional
+        Maximum size multiplier applied to ``base_node_size`` in the
+        dynamic ``node_size_mode``. Default ``5.0``.
+    border_width : int, optional
+        Pixel width of the role-classification border ring rendered
+        when ``node_roles`` is ``True``. Default ``6``.
+    viz_type : str, optional
+        Edge visualization filter. ``'all'`` (default) draws every
+        edge. ``'intra'`` keeps only within-module edges. ``'inter'``
+        keeps only between-module edges. ``'nodes_only'`` drops all
+        edges so only the labelled nodes render.
+    inter_edge_color : str, optional
+        When set, color all between-module (inter-module) edges with
+        this color instead of the source module's color. **The
+        override is intentionally narrow**: it only takes effect when
+        ``edge_color_mode == 'module'`` AND
+        ``viz_type in ('all', 'inter')``. In ``edge_color_mode='sign'``
+        the override is ignored (with a one-line note explaining why).
+        With ``viz_type='intra'`` or ``viz_type='nodes_only'`` no inter
+        edges exist so the flag is silently moot. Default ``None``
+        (use the existing ``edge_color_mode`` behavior). Accepts any
+        plotly color string -- e.g. ``'black'`` or ``'#000000'``.
 
     Returns
     -------
@@ -2405,6 +2482,77 @@ def create_brain_connectivity_plot_with_modularity(
     unique_modules = np.unique(module_arr)
     module_colors = generate_module_colors(len(unique_modules))
     module_color_map_internal = {m: module_colors[i] for i, m in enumerate(sorted(unique_modules))}
+
+    # ------------------------------------------------------------------
+    # Optional: PC / within-module-Z node-role classification
+    #
+    # When node_roles=True or node_size_mode != 'fixed', we need
+    # participation_coef and within_module_zscore values per node from
+    # the supplied node_metrics file.
+    # ------------------------------------------------------------------
+    if viz_type not in ('all', 'intra', 'inter', 'nodes_only'):
+        raise ValueError(
+            f"viz_type must be one of 'all', 'intra', 'inter', 'nodes_only'; "
+            f"got {viz_type!r}"
+        )
+    if node_size_mode not in ('fixed', 'pc', 'zscore', 'both'):
+        raise ValueError(
+            f"node_size_mode must be one of 'fixed', 'pc', 'zscore', 'both'; "
+            f"got {node_size_mode!r}"
+        )
+
+    pc_values_arr: Optional[np.ndarray] = None
+    z_scores_arr: Optional[np.ndarray] = None
+    node_role_names: Optional[List[str]] = None
+    node_role_colors: Optional[List[str]] = None
+    dynamic_node_sizes: Optional[np.ndarray] = None
+
+    if node_roles or node_size_mode != 'fixed':
+        if node_metrics is None:
+            raise ValueError(
+                "node_roles=True or node_size_mode != 'fixed' requires "
+                "node_metrics to be passed (a CSV path or DataFrame with "
+                "'participation_coef' and 'within_module_zscore' columns)."
+            )
+        metrics_df = load_node_metrics(node_metrics, n_expected_nodes=n_nodes)
+        if 'participation_coef' not in metrics_df.columns:
+            raise ValueError(
+                "node_metrics is missing required column "
+                "'participation_coef'."
+            )
+        if 'within_module_zscore' not in metrics_df.columns:
+            raise ValueError(
+                "node_metrics is missing required column "
+                "'within_module_zscore'."
+            )
+        pc_values_arr = metrics_df['participation_coef'].to_numpy(dtype=float)
+        z_scores_arr = metrics_df['within_module_zscore'].to_numpy(dtype=float)
+
+        if node_roles:
+            node_role_names = []
+            node_role_colors = []
+            for pc_v, z_v in zip(pc_values_arr, z_scores_arr):
+                role, color = classify_node_role(z_v, pc_v)
+                node_role_names.append(role)
+                node_role_colors.append(color)
+
+        if node_size_mode != 'fixed':
+            base_for_sizing = (
+                int(base_node_size) if base_node_size is not None
+                else (int(node_size) if isinstance(node_size, (int, float)) else 8)
+            )
+            dynamic_node_sizes = np.array(
+                [
+                    calculate_node_size(
+                        pc_v, z_v,
+                        mode=node_size_mode,
+                        base_size=base_for_sizing,
+                        max_multiplier=max_node_multiplier,
+                    )
+                    for pc_v, z_v in zip(pc_values_arr, z_scores_arr)
+                ],
+                dtype=float,
+            )
 
     # Call the main function with module assignments as node_color
     fig, graph_stats = create_brain_connectivity_plot(
@@ -2537,9 +2685,60 @@ def create_brain_connectivity_plot_with_modularity(
     if edge_width_scale != 1.0:
         min_ew = float(min_ew) * float(edge_width_scale)
         max_ew = float(max_ew) * float(edge_width_scale)
+
+    # Snapshot the connected-node mask BEFORE the viz_type filter zeroes
+    # cells out. show_only_connected_nodes (default True) below uses
+    # this to decide which nodes render; we want it to reflect the
+    # ORIGINAL network so 'nodes_only' still shows nodes, and 'inter'
+    # still shows nodes that have only intra-module edges.
+    pre_filter_connected_mask = (
+        np.any(conn_matrix != 0, axis=0) | np.any(conn_matrix != 0, axis=1)
+    )
+
+    # ---- viz_type edge filter --------------------------------------
+    # 'all'         keep every edge (default behavior)
+    # 'intra'       keep only edges where both endpoints share a module
+    # 'inter'       keep only edges where the endpoints are in different modules
+    # 'nodes_only'  drop every edge so only the labelled nodes render
+    if viz_type == 'nodes_only':
+        conn_matrix = np.zeros_like(conn_matrix)
+    elif viz_type in ('intra', 'inter'):
+        same_module = module_arr[:, None] == module_arr[None, :]
+        if viz_type == 'intra':
+            conn_matrix = np.where(same_module, conn_matrix, 0)
+        else:
+            conn_matrix = np.where(same_module, 0, conn_matrix)
+        # Same-shape transform applies to the p-value lookup table too so
+        # hover tooltips don't reference dropped cells.
+        if pvalue_lookup_mod is not None:
+            if viz_type == 'intra':
+                pvalue_lookup_mod = np.where(same_module, pvalue_lookup_mod, np.nan)
+            else:
+                pvalue_lookup_mod = np.where(same_module, np.nan, pvalue_lookup_mod)
+
     all_weights_full = conn_matrix[conn_matrix != 0]
     if all_weights_full.size == 0:
         all_weights_full = np.array([0.0])
+
+    # ---- inter_edge_color scope check ------------------------------
+    # Per design (see docstring): the override fires iff
+    #   1. inter_edge_color is not None
+    #   2. edge_color_mode == 'module'
+    #   3. viz_type in ('all', 'inter')
+    # Otherwise we silently no-op, except in sign mode where we print
+    # a one-line note so the user knows why the flag was ignored.
+    inter_color_active = (
+        inter_edge_color is not None
+        and edge_color_mode == 'module'
+        and viz_type in ('all', 'inter')
+    )
+    if (inter_edge_color is not None
+            and edge_color_mode != 'module'):
+        print(
+            f"Note: --inter-edge-color={inter_edge_color!r} is ignored "
+            f"because edge_color_mode={edge_color_mode!r}; the override "
+            f"only takes effect with edge_color_mode='module'."
+        )
 
     # For each module: build one trace for its nodes and one trace for its
     # edges (edge endpoint i, lower-index, defines ownership). Both share
@@ -2558,6 +2757,8 @@ def create_brain_connectivity_plot_with_modularity(
         # Per-edge color used only when edge_color_matrix is supplied;
         # in that case we emit one trace per unique color below.
         per_edge_colors: List[str] = []
+        # Per-edge inter-vs-intra flag, used only when inter_color_active.
+        per_edge_is_inter: List[bool] = []
         # Collect (i, j, weight) of edges where source (lower index) is in module
         for i in range(conn_matrix.shape[0]):
             if module_arr[i] != module_id:
@@ -2603,6 +2804,7 @@ def create_brain_connectivity_plot_with_modularity(
                 edge_hover.extend([hover_text, hover_text, ''])
                 if edge_color_arr_mod is not None:
                     per_edge_colors.append(str(edge_color_arr_mod[i, j]))
+                per_edge_is_inter.append(bool(module_arr[j] != module_id))
 
         if edge_x:
             # When the user supplied an explicit edge color matrix, those
@@ -2660,18 +2862,71 @@ def create_brain_connectivity_plot_with_modularity(
                     line_color = None
 
                 if line_color is not None:
-                    avg_w = float(np.mean(edge_widths_for_avg)) if edge_widths_for_avg else max_ew
-                    fig.add_trace(go.Scatter3d(
-                        x=edge_x, y=edge_y, z=edge_z,
-                        mode='lines',
-                        line=dict(color=line_color, width=avg_w),
-                        opacity=0.6,
-                        hoverinfo='text',
-                        hovertext=edge_hover,
-                        showlegend=False,
-                        name=f'Module {module_id} Edges',
-                        legendgroup=legend_group,
-                    ))
+                    if inter_color_active:
+                        # Split this module's edges into intra (module
+                        # color) and inter (override color) sub-traces.
+                        # Each edge contributes 3 entries to the x/y/z
+                        # lists (start, end, None separator).
+                        intra_x, intra_y, intra_z, intra_h, intra_w = (
+                            [], [], [], [], []
+                        )
+                        inter_x, inter_y, inter_z, inter_h, inter_w = (
+                            [], [], [], [], []
+                        )
+                        for k, is_inter in enumerate(per_edge_is_inter):
+                            sx = edge_x[k * 3:k * 3 + 3]
+                            sy = edge_y[k * 3:k * 3 + 3]
+                            sz = edge_z[k * 3:k * 3 + 3]
+                            sh = edge_hover[k * 3:k * 3 + 3]
+                            sw = edge_widths_for_avg[k]
+                            if is_inter:
+                                inter_x.extend(sx); inter_y.extend(sy)
+                                inter_z.extend(sz); inter_h.extend(sh)
+                                inter_w.append(sw)
+                            else:
+                                intra_x.extend(sx); intra_y.extend(sy)
+                                intra_z.extend(sz); intra_h.extend(sh)
+                                intra_w.append(sw)
+
+                        if intra_x:
+                            avg_w = float(np.mean(intra_w)) if intra_w else max_ew
+                            fig.add_trace(go.Scatter3d(
+                                x=intra_x, y=intra_y, z=intra_z,
+                                mode='lines',
+                                line=dict(color=line_color, width=avg_w),
+                                opacity=0.6,
+                                hoverinfo='text',
+                                hovertext=intra_h,
+                                showlegend=False,
+                                name=f'Module {module_id} Intra Edges',
+                                legendgroup=legend_group,
+                            ))
+                        if inter_x:
+                            avg_w = float(np.mean(inter_w)) if inter_w else max_ew
+                            fig.add_trace(go.Scatter3d(
+                                x=inter_x, y=inter_y, z=inter_z,
+                                mode='lines',
+                                line=dict(color=inter_edge_color, width=avg_w),
+                                opacity=0.6,
+                                hoverinfo='text',
+                                hovertext=inter_h,
+                                showlegend=False,
+                                name=f'Module {module_id} Inter Edges',
+                                legendgroup=legend_group,
+                            ))
+                    else:
+                        avg_w = float(np.mean(edge_widths_for_avg)) if edge_widths_for_avg else max_ew
+                        fig.add_trace(go.Scatter3d(
+                            x=edge_x, y=edge_y, z=edge_z,
+                            mode='lines',
+                            line=dict(color=line_color, width=avg_w),
+                            opacity=0.6,
+                            hoverinfo='text',
+                            hovertext=edge_hover,
+                            showlegend=False,
+                            name=f'Module {module_id} Edges',
+                            legendgroup=legend_group,
+                        ))
 
         if edge_color_mode == 'sign' and edge_color_arr_mod is None:
             # Re-walk and split this module's edges into positive and
@@ -2754,13 +3009,13 @@ def create_brain_connectivity_plot_with_modularity(
 
         # ---------- nodes belonging to this module ----------
         # Only show nodes that have at least one connection if
-        # show_only_connected_nodes is True
+        # show_only_connected_nodes is True. We test against the
+        # PRE-filter mask so viz_type='nodes_only' still shows nodes,
+        # and 'inter'/'intra' don't drop nodes that lost their edges
+        # to the filter.
         if show_only_connected_nodes:
-            connected_mask = (
-                np.any(conn_matrix != 0, axis=0) | np.any(conn_matrix != 0, axis=1)
-            )
             module_node_visible = [
-                i for i in module_node_idx if connected_mask[i]
+                i for i in module_node_idx if pre_filter_connected_mask[i]
             ]
         else:
             module_node_visible = list(module_node_idx)
@@ -2770,15 +3025,62 @@ def create_brain_connectivity_plot_with_modularity(
             node_y = [roi_coords_df.loc[i, 'cog_y'] for i in module_node_visible]
             node_z = [roi_coords_df.loc[i, 'cog_z'] for i in module_node_visible]
             node_labels = [roi_coords_df.loc[i, 'roi_name'] for i in module_node_visible]
-            # Use the node sizes the inner function computed (stored on the
-            # graph in graph_stats? not directly; recompute here). Apply
-            # node_size_scale here too so the rebuilt module markers
-            # match the scaled sizes the inner call produced.
-            node_sizes = convert_node_size_input(node_size, n_nodes, default_size=8.0)
+            # Resolve per-node sizes. Dynamic PC/Z-derived sizes win when
+            # node_size_mode != 'fixed'; otherwise we fall back to whatever
+            # `node_size` resolves to (scalar, vector CSV, etc.).
+            if dynamic_node_sizes is not None:
+                node_sizes = dynamic_node_sizes.copy()
+            else:
+                node_sizes = convert_node_size_input(node_size, n_nodes, default_size=8.0)
             if node_size_scale != 1.0:
                 node_sizes = node_sizes.astype(float) * float(node_size_scale)
             sizes_for_module = [node_sizes[i] for i in module_node_visible]
 
+            # Build hover text. When role classification is on, surface the
+            # role name + PC + Z-score so the reader can map the border
+            # color back to the metric values.
+            if node_roles and node_role_names is not None:
+                hover_for_module = []
+                for vis_idx, i in enumerate(module_node_visible):
+                    hover_for_module.append(
+                        f"<b>{node_labels[vis_idx]}</b><br>"
+                        f"Module: {int(module_id)}<br>"
+                        f"Role: {node_role_names[i]}<br>"
+                        f"PC: {pc_values_arr[i]:.3f}<br>"
+                        f"Within-module Z: {z_scores_arr[i]:.3f}"
+                    )
+            else:
+                hover_for_module = [
+                    f"<b>{nm}</b><br>Module: {int(module_id)}"
+                    for nm in node_labels
+                ]
+
+            # Layer 1 (border) -- only emitted when role classification is
+            # on. Each marker is rendered slightly larger than its inner
+            # twin so the role color shows as a visible ring around the
+            # module-colored fill. Layer 1 is hover-skip and not in the
+            # legend; the legend entry lives on Layer 2 below.
+            if node_roles and node_role_colors is not None:
+                module_border_colors = [
+                    node_role_colors[i] for i in module_node_visible
+                ]
+                border_sizes = [s + float(border_width) for s in sizes_for_module]
+                fig.add_trace(go.Scatter3d(
+                    x=node_x, y=node_y, z=node_z,
+                    mode='markers',
+                    marker=dict(
+                        size=border_sizes,
+                        color=module_border_colors,
+                        opacity=0.95,
+                    ),
+                    hoverinfo='skip',
+                    showlegend=False,
+                    name=f'Module {int(module_id)} role borders',
+                    legendgroup=legend_group,
+                ))
+
+            # Layer 2 -- the inner module-colored fill. This trace owns the
+            # legend entry and the labels.
             fig.add_trace(go.Scatter3d(
                 x=node_x, y=node_y, z=node_z,
                 mode='markers+text',
@@ -2792,8 +3094,7 @@ def create_brain_connectivity_plot_with_modularity(
                 textposition='top center',
                 textfont=dict(size=label_font_size, color='black', family='Arial'),
                 hoverinfo='text',
-                hovertext=[f"<b>{nm}</b><br>Module: {int(module_id)}"
-                           for nm in node_labels],
+                hovertext=hover_for_module,
                 showlegend=True,
                 name=f'Module {int(module_id)} ({n_in_module})',
                 legendgroup=legend_group,
@@ -2820,6 +3121,62 @@ def create_brain_connectivity_plot_with_modularity(
     graph_stats['module_sizes'] = module_sizes
     graph_stats['Q_score'] = Q_score
     graph_stats['Z_score'] = Z_score
+
+    # When role classification is on, drop a small role-color legend in
+    # the bottom-right corner of the plot so readers can map border
+    # colors to role names. This is a paper-coordinate annotation so it
+    # appears in both the HTML and any static export.
+    if node_roles and node_role_names is not None:
+        # Only show the roles that actually appear on visible nodes —
+        # avoids cluttering the legend with empty role rows.
+        # Order matches the Guimerà & Amaral cartography from "most
+        # connected" (R7 Kinless hub) down to "least connected"
+        # (R1 Ultra-peripheral), so the legend reads top-to-bottom in
+        # decreasing role importance.
+        observed_roles = []
+        for role in [
+            "Kinless hub",
+            "Connector hub",
+            "Provincial hub",
+            "Non-hub kinless",
+            "Non-hub connector",
+            "Peripheral",
+            "Ultra-peripheral",
+            "Unclassified",
+        ]:
+            if role in node_role_names:
+                # Find the color this role got from classify_node_role.
+                idx = node_role_names.index(role)
+                observed_roles.append((role, node_role_colors[idx]))
+
+        if observed_roles:
+            lines = ["<b>Node roles (border)</b>"]
+            for role, color in observed_roles:
+                # White on white is invisible; render the Ultra-peripheral
+                # bullet as an open circle so the legend entry is still
+                # readable on the default white background.
+                glyph = "○" if color.upper() == "#FFFFFF" else "●"
+                lines.append(
+                    f'<span style="color:{color}">{glyph}</span> {role}'
+                )
+            role_legend_text = "<br>".join(lines)
+            existing_annotations = list(getattr(fig.layout, 'annotations', None) or [])
+            existing_annotations.append(dict(
+                name="keep_role_legend",
+                text=role_legend_text,
+                showarrow=False,
+                xref="paper", yref="paper",
+                x=0.01, y=0.30,
+                xanchor="left",
+                yanchor="top",
+                align="left",
+                font=dict(size=10, color='black'),
+                bgcolor='rgba(255,255,255,0.85)',
+                bordercolor='black',
+                borderwidth=1,
+                borderpad=4,
+            ))
+            fig.update_layout(annotations=existing_annotations)
 
     # Re-save the figure with the legend. The inner call already wrote
     # the file once via create_brain_connectivity_plot, but we then

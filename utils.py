@@ -29,35 +29,78 @@ class NumpyEncoder(json.JSONEncoder):
 
 def classify_node_role(z_score: float, pc: float) -> Tuple[str, str]:
     """
-    Classify node role based on within-module z-score and participation coefficient.
+    Classify node role using the Guimerà & Amaral cartographic two-cut.
+
+    Implements the seven-region role classification of Guimerà & Nunes
+    Amaral, *Functional cartography of complex metabolic networks*,
+    **Nature** 433, 895-900 (2005), https://doi.org/10.1038/nature03288.
+
+    The non-hub vs. hub split is at within-module ``Z = 2.5``. Each
+    half is then sub-divided by the participation coefficient ``P``:
+
+    - Non-hubs (``Z < 2.5``):
+        - **R1 Ultra-peripheral**: ``P <= 0.05``
+        - **R2 Peripheral**: ``0.05 < P <= 0.62``
+        - **R3 Non-hub connector**: ``0.62 < P <= 0.80``
+        - **R4 Non-hub kinless**: ``P > 0.80``
+
+    - Hubs (``Z >= 2.5``):
+        - **R5 Provincial hub**: ``P <= 0.30``
+        - **R6 Connector hub**: ``0.30 < P <= 0.75``
+        - **R7 Kinless hub**: ``P > 0.75``
+
+    The returned border color is chosen to be visually distinct from
+    the default module fill palette (red / green / blue / orange /
+    purple / brown), since this color is rendered as a ring around a
+    module-colored fill in the modularity plot.
 
     Parameters
     ----------
     z_score : float
-        Within-module z-score
+        Within-module Z-score (also called z, within-module degree
+        z-score). Hub status is determined by ``z_score >= 2.5``.
     pc : float
-        Participation coefficient
+        Participation coefficient (``0 <= P <= 1``). Cuts the non-hub
+        and hub halves into the role sub-regions above.
 
     Returns
     -------
-    tuple
-        (role_name, color) for the node
+    tuple of (str, str)
+        ``(role_name, hex_color)`` for the node. ``role_name`` is one
+        of: ``"Ultra-peripheral"``, ``"Peripheral"``, ``"Non-hub
+        connector"``, ``"Non-hub kinless"``, ``"Provincial hub"``,
+        ``"Connector hub"``, ``"Kinless hub"``, or ``"Unclassified"``
+        (defensive fallback for non-finite inputs).
+
+    References
+    ----------
+    Guimerà R, Nunes Amaral LA. Functional cartography of complex
+    metabolic networks. *Nature* 433, 895-900 (2005).
+    https://doi.org/10.1038/nature03288
     """
-    if z_score < 0.05 and pc < 0.05:
-        return "Ultra-peripheral", "#E8E8E8"  # Very light gray
-    elif z_score < 2.5 and pc < 0.62:
-        if abs(pc - 0.5) < 0.1:  # Kinless nodes
-            return "Kinless", "#FFB6C1"  # Light pink
+    # Defensive: NaN / inf go to "Unclassified" instead of an arbitrary
+    # branch (the comparisons below would otherwise all be False).
+    if not (np.isfinite(z_score) and np.isfinite(pc)):
+        return "Unclassified", "#808080"
+
+    if z_score < 2.5:
+        # Non-hub regions (R1 - R4)
+        if pc <= 0.05:
+            return "Ultra-peripheral", "#FFFFFF"     # white -- barely-there border
+        elif pc <= 0.62:
+            return "Peripheral", "#CCCCCC"           # light gray -- quiet, non-hub
+        elif pc <= 0.80:
+            return "Non-hub connector", "#00CED1"    # turquoise (R3)
         else:
-            return "Peripheral", "#B0B0B0"  # Light gray
-    elif z_score < 2.5 and pc >= 0.62:
-        return "Satellite Connector", "#87CEEB"  # Sky blue
-    elif z_score >= 2.5 and pc < 0.3:
-        return "Provincial Hub", "#FFD700"  # Gold
-    elif z_score >= 2.5 and pc >= 0.3:
-        return "Connector Hub", "#FF4500"  # Red-orange
+            return "Non-hub kinless", "#FF1493"      # deep pink (R4)
     else:
-        return "Unclassified", "#808080"  # Gray
+        # Hub regions (R5 - R7)
+        if pc <= 0.30:
+            return "Provincial hub", "#FFFF00"       # bright yellow (R5)
+        elif pc <= 0.75:
+            return "Connector hub", "#000000"        # black (R6)
+        else:
+            return "Kinless hub", "#FF00FF"          # magenta (R7)
 
 
 def calculate_node_size(pc: float, z_score: float, mode: str = 'both',

@@ -338,6 +338,73 @@ CAMERA_VIEWS = [
                   "further away. Default 1.0."
               ))
 
+# === Node-role classification (PC + within-module Z-score) ===
+@click.option("--node-roles/--no-node-roles", default=False,
+              help=(
+                  "Enable per-node role classification using the "
+                  "cartographic two-cut of Guimera & Amaral, Functional "
+                  "cartography of complex metabolic networks, Nature "
+                  "433:895 (2005). Seven regions: Ultra-peripheral / "
+                  "Peripheral / Non-hub connector / Non-hub kinless / "
+                  "Provincial hub / Connector hub / Kinless hub. When "
+                  "set, each node renders as a dual-layer marker: outer "
+                  "ring is the role color, inner fill is the module "
+                  "color. Requires --node-metrics with "
+                  "'participation_coef' and 'within_module_zscore' "
+                  "columns. A small role legend is added in the "
+                  "bottom-left corner. Default: off."
+              ))
+@click.option("--node-size-mode",
+              default="fixed",
+              type=click.Choice(["fixed", "pc", "zscore", "both"], case_sensitive=False),
+              help=(
+                  "How to compute per-node sizes. 'fixed' (default) uses "
+                  "--node-size as-is. 'pc' / 'zscore' / 'both' derive "
+                  "sizes dynamically from participation coefficient, "
+                  "within-module Z-score, or a 50/50 blend of both. "
+                  "Requires --node-metrics. Use --base-node-size and "
+                  "--max-node-multiplier to tune the dynamic range."
+              ))
+@click.option("--base-node-size", default=None, type=int,
+              help=(
+                  "Base size (px) for dynamic --node-size-mode. When unset, "
+                  "falls back to --node-size if it's a scalar, else 8. "
+                  "Default: unset."
+              ))
+@click.option("--max-node-multiplier", default=5.0, type=float,
+              help=(
+                  "Maximum size multiplier applied to --base-node-size in "
+                  "dynamic --node-size-mode. Default 5.0 (i.e. the largest "
+                  "node is up to 5x the base size)."
+              ))
+@click.option("--border-width", default=6, type=int,
+              help=(
+                  "Pixel width of the role-classification border ring "
+                  "rendered when --node-roles is on. Larger values make "
+                  "the role color more visible at the cost of obscuring "
+                  "the module fill. Default 6."
+              ))
+@click.option("--viz-type",
+              default="all",
+              type=click.Choice(["all", "intra", "inter", "nodes_only"], case_sensitive=False),
+              help=(
+                  "Edge visualization filter. 'all' (default) draws every "
+                  "edge. 'intra' keeps only within-module edges. 'inter' "
+                  "keeps only between-module edges. 'nodes_only' drops all "
+                  "edges so only the labelled nodes render."
+              ))
+@click.option("--inter-edge-color", default=None, type=str,
+              help=(
+                  "Override color for between-module (inter-module) "
+                  "edges, e.g. 'black' or '#000000'. SCOPED: only takes "
+                  "effect when --edge-color-mode is 'module' AND "
+                  "--viz-type is 'all' or 'inter'. Ignored (with a one-"
+                  "line note) in sign mode; silently moot with --viz-type "
+                  "'intra' or 'nodes_only'. Useful for highlighting "
+                  "cross-module connectivity as a single visual layer. "
+                  "Default: unset (use --edge-color-mode behavior)."
+              ))
+
 # === Convenience ===
 @click.option("--show/--no-show", default=False,
               help="Open the HTML file in browser after creation.")
@@ -361,6 +428,8 @@ def modular(mesh, coords, matrix, modules, output, title, q_score, z_score,
             show_size_legend, show_width_legend, node_size_legend_metric,
             multi_view, custom_views, multi_view_panel_size,
             multi_view_keep_first_legend, multi_view_zoom,
+            node_roles, node_size_mode, base_node_size, max_node_multiplier,
+            border_width, viz_type, inter_edge_color,
             show):
     """
     Create a brain connectivity plot with modularity visualization.
@@ -681,6 +750,13 @@ def modular(mesh, coords, matrix, modules, output, title, q_score, z_score,
             multi_view_panel_size=multi_view_panel_size_val,
             multi_view_keep_first_legend=multi_view_keep_first_legend,
             multi_view_zoom=multi_view_zoom,
+            node_roles=node_roles,
+            node_size_mode=node_size_mode,
+            base_node_size=base_node_size,
+            max_node_multiplier=max_node_multiplier,
+            border_width=border_width,
+            viz_type=viz_type,
+            inter_edge_color=inter_edge_color,
         )
 
         print_success(f"Saved interactive visualization to {output}")
