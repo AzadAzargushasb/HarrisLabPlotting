@@ -2687,10 +2687,9 @@ def create_brain_connectivity_plot_with_modularity(
         max_ew = float(max_ew) * float(edge_width_scale)
 
     # Snapshot the connected-node mask BEFORE the viz_type filter zeroes
-    # cells out. show_only_connected_nodes (default True) below uses
-    # this to decide which nodes render; we want it to reflect the
-    # ORIGINAL network so 'nodes_only' still shows nodes, and 'inter'
-    # still shows nodes that have only intra-module edges.
+    # cells out. Used only by viz_type='nodes_only' below, where we
+    # explicitly want nodes to render even though every edge has been
+    # dropped from the matrix.
     pre_filter_connected_mask = (
         np.any(conn_matrix != 0, axis=0) | np.any(conn_matrix != 0, axis=1)
     )
@@ -2715,6 +2714,24 @@ def create_brain_connectivity_plot_with_modularity(
                 pvalue_lookup_mod = np.where(same_module, pvalue_lookup_mod, np.nan)
             else:
                 pvalue_lookup_mod = np.where(same_module, np.nan, pvalue_lookup_mod)
+
+    # Effective connected-node mask used by show_only_connected_nodes.
+    # The rule:
+    #   - viz_type='nodes_only': use the PRE-filter mask. The user
+    #     explicitly asked to see nodes without edges, so test against
+    #     the original network.
+    #   - viz_type='intra' / 'inter' / 'all': use the POST-filter mask.
+    #     With 'inter' the user wants nodes that have at least one
+    #     inter-module edge AFTER the filter -- a node whose edges are
+    #     all intra (and therefore zeroed by the filter) should NOT
+    #     render. Same logic for 'intra'. With 'all' the post-filter
+    #     mask equals the pre-filter mask, so the choice is a no-op.
+    if viz_type == 'nodes_only':
+        effective_connected_mask = pre_filter_connected_mask
+    else:
+        effective_connected_mask = (
+            np.any(conn_matrix != 0, axis=0) | np.any(conn_matrix != 0, axis=1)
+        )
 
     all_weights_full = conn_matrix[conn_matrix != 0]
     if all_weights_full.size == 0:
@@ -3009,13 +3026,14 @@ def create_brain_connectivity_plot_with_modularity(
 
         # ---------- nodes belonging to this module ----------
         # Only show nodes that have at least one connection if
-        # show_only_connected_nodes is True. We test against the
-        # PRE-filter mask so viz_type='nodes_only' still shows nodes,
-        # and 'inter'/'intra' don't drop nodes that lost their edges
-        # to the filter.
+        # show_only_connected_nodes is True. The effective mask was
+        # computed above with viz_type-aware semantics: post-filter for
+        # 'intra'/'inter'/'all' (so e.g. inter-only correctly hides
+        # nodes whose only edges were intra-module), pre-filter for
+        # 'nodes_only' (so nodes still render with no edges).
         if show_only_connected_nodes:
             module_node_visible = [
-                i for i in module_node_idx if pre_filter_connected_mask[i]
+                i for i in module_node_idx if effective_connected_mask[i]
             ]
         else:
             module_node_visible = list(module_node_idx)
