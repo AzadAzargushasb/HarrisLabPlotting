@@ -426,8 +426,8 @@ positive/negative coloring entirely. Cells may contain:
   categorical edge groups but don't want to pick colors yourself.
 - **Empty / NaN / 0** — the edge is **skipped** (not drawn).
 
-Example: highlight a single sub-network in green, leave everything else
-default:
+Example: highlight two distinct categorical sub-networks at once,
+each in its own auto-generated palette color:
 
 ```bash
 hlplot plot \
@@ -439,8 +439,8 @@ hlplot plot \
   --output output/test_pval_grouped.html
 ```
 
-![Per-edge color matrix override: a single sub-network highlighted](../docs/images/pvalue_tutorial/10_edge_color.png)
-*Static snapshot — `edge_groups.csv` (shipped under `node_edge_28/`) labels module-1 intra-edges with `1` and leaves every other cell as `0` (skip). The package auto-colors all `1`-labeled edges with the same palette color, drawing only the highlighted sub-network.*
+![Per-edge color matrix override: two categorical sub-networks highlighted](../docs/images/pvalue_tutorial/10_edge_color.png)
+*Static snapshot — `edge_groups.csv` (shipped under `node_edge_28/`) labels two coherent sub-networks among the significant edges: module-2 intra-edges with `1` (3 edges) and module-3 ↔ module-4 cross-edges with `2` (4 edges). All other cells are `0` (skip). The package auto-colors each integer label with a different palette color, drawing only the two highlighted sub-networks.*
 
 ---
 

@@ -119,6 +119,20 @@ fig, _ = create_brain_connectivity_plot(
 fig.show()
 ```
 
+#### CLI equivalent
+
+```bash
+hlplot plot \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
+  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
+  --node-size tutorial/output_legend_views/sizes.csv \
+  --edge-width-min 1 --edge-width-max 8 \
+  --camera oblique \
+  --title "Auto size + width key (weight mode)" \
+  --output tutorial/output_legend_views/auto_size_and_width.html
+```
+
 ![Auto size and width legend keys, weight mode](../docs/images/legend_tutorial/01_size_key.png)
 *Vector node sizes (6 → 24 px linear ramp) and weight-scaled edges. Both legend keys appear automatically near the bottom of the plot.*
 
@@ -143,6 +157,20 @@ fig, _ = create_brain_connectivity_plot(
     camera_view='oblique',
 )
 fig.show()
+```
+
+#### CLI equivalent
+
+```bash
+hlplot plot \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
+  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
+  --node-size 10 \
+  --edge-width-fixed 2.0 \
+  --camera oblique \
+  --title "Both keys auto-skipped (scalar size, fixed width)" \
+  --output tutorial/output_legend_views/no_keys.html
 ```
 
 ![Both legend keys auto-skipped](../docs/images/legend_tutorial/02_no_keys.png)
@@ -170,6 +198,21 @@ fig, _ = create_brain_connectivity_plot(
     camera_view='oblique',
 )
 fig.show()
+```
+
+#### CLI equivalent
+
+```bash
+hlplot plot \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
+  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
+  --node-size tutorial/output_legend_views/sizes.csv \
+  --edge-width-min 1 --edge-width-max 8 \
+  --no-size-legend --no-width-legend \
+  --camera oblique \
+  --title "Same plot, both keys suppressed" \
+  --output tutorial/output_legend_views/manual_off.html
 ```
 
 ![Same plot, both legend keys explicitly suppressed](../docs/images/legend_tutorial/03_manual_off.png)
@@ -249,6 +292,23 @@ fig, _ = create_brain_connectivity_plot(
 fig.show()
 ```
 
+#### CLI equivalent
+
+```bash
+hlplot plot \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
+  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
+  --node-size tutorial/output_legend_views/sizes_from_pc.csv \
+  --node-metrics tutorial/output_legend_views/metrics.csv \
+  --node-size-legend-metric participation_coef \
+  --edge-width-min 1 --edge-width-max 8 \
+  --node-size-scale 0.5 \
+  --camera oblique \
+  --title "Size key labeled with PC values, not pixel sizes" \
+  --output tutorial/output_legend_views/metric_labeled_size_legend.html
+```
+
 ![Size key labeled with participation-coefficient values](../docs/images/legend_tutorial/04_metric_labeled.png)
 *Size key labels are 5 evenly-spaced values from the `participation_coef` column of `metrics_df`, with the column name as the legend title. The dots themselves still render at the actual pre-scaled pixel sizes.*
 
@@ -273,6 +333,22 @@ fig, _ = create_brain_connectivity_plot(
     node_size_scale=0.5,
 )
 fig.show()
+```
+
+#### CLI equivalent
+
+```bash
+hlplot plot \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
+  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
+  --node-size tutorial/output_legend_views/sizes_from_pc.csv \
+  --node-metrics tutorial/output_legend_views/metrics.csv \
+  --edge-width-min 1 --edge-width-max 8 \
+  --node-size-scale 0.5 \
+  --camera oblique \
+  --title "Same plot, default labels (literal px sizes)" \
+  --output tutorial/output_legend_views/metric_default_labels.html
 ```
 
 ![Same plot with default labels (literal pixel sizes)](../docs/images/legend_tutorial/05_metric_default.png)
@@ -309,6 +385,25 @@ fig, _ = create_brain_connectivity_plot(
     camera_view='oblique',
 )
 fig.show()
+```
+
+#### CLI equivalent
+
+```bash
+hlplot plot \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
+  --matrix test_files/tutorial_files/node_edge_28/pvalues_28.csv \
+  --matrix-type pvalue --pvalue-threshold 0.05 \
+  --sign-matrix test_files/tutorial_files/node_edge_28/pvalues_28_signs.csv \
+  --pos-edge-color "#d62728" --neg-edge-color "#1f77b4" \
+  --node-size tutorial/output_legend_views/sizes_from_pc.csv \
+  --node-metrics tutorial/output_legend_views/metrics.csv \
+  --node-size-legend-metric participation_coef \
+  --edge-width-min 1 --edge-width-max 8 \
+  --camera oblique \
+  --title "Signed p-values, both keys, metric-labeled sizes" \
+  --output tutorial/output_legend_views/pval_with_keys.html
 ```
 
 ![Both legend keys in p-value mode, signed edges](../docs/images/legend_tutorial/06_pval_keys.png)
@@ -358,6 +453,27 @@ fig, _ = create_brain_connectivity_plot(
 )
 ```
 
+#### CLI equivalent
+
+```bash
+hlplot plot \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
+  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
+  --node-size tutorial/output_legend_views/sizes_from_pc.csv \
+  --node-metrics tutorial/output_legend_views/metrics.csv \
+  --node-size-legend-metric participation_coef \
+  --edge-width-min 1 --edge-width-max 8 \
+  --multi-view "left,superior,posterior" \
+  --multi-view-panel-size "800,800" \
+  --image-dpi 600 \
+  --node-size-scale 0.5 \
+  --label-font-size 6 \
+  --title "Three views of the same brain" \
+  --output tutorial/output_legend_views/mv_default_dummy.html \
+  --export-image tutorial/output_legend_views/multi_view_default.png
+```
+
 ![Default 3-panel multi-view stitched PNG (left / superior / posterior)](../docs/images/legend_tutorial/07_mv_default.png)
 *Same brain rendered from three preset camera views, stitched horizontally into one PNG. Legend lives in the first panel only; per-panel labels appear below each brain.*
 
@@ -401,6 +517,30 @@ fig, _ = create_brain_connectivity_plot(
 )
 ```
 
+#### CLI equivalent
+
+`--custom-view` is multi-use — pass it once per registered view. The
+shape `NAME=ex,ey,ez` is the same eye triple a Python `dict(eye=...)`
+would carry. Once registered, reference the name in `--multi-view`.
+
+```bash
+hlplot plot \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
+  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
+  --node-size tutorial/output_legend_views/sizes_from_pc.csv \
+  --edge-width-min 1 --edge-width-max 8 \
+  --custom-view "tilted=1.5,0.8,1.2" \
+  --custom-view "low_anterior=0.0,1.8,0.3" \
+  --multi-view "left,tilted,low_anterior,anterior" \
+  --multi-view-panel-size "700,700" \
+  --multi-view-zoom 1.2 \
+  --image-dpi 600 \
+  --title "Mixed: preset + custom + custom + preset" \
+  --output tutorial/output_legend_views/mv_custom_dummy.html \
+  --export-image tutorial/output_legend_views/multi_view_custom.png
+```
+
 ![4-panel mixed strip: preset + custom + custom + preset](../docs/images/legend_tutorial/08_mv_custom.png)
 *Multi-view list of `['left', tilted_view, low_anterior, 'anterior']` produces 4 panels in that order. Custom-view dicts use the same shape as `custom_camera` elsewhere in the package.*
 
@@ -438,6 +578,29 @@ fig, _ = create_brain_connectivity_plot_with_modularity(
 )
 ```
 
+#### CLI equivalent
+
+```bash
+hlplot modular \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
+  --matrix test_files/tutorial_files/node_edge_28/pvalues_28.csv \
+  --modules test_files/tutorial_files/node_edge_28/modules_28.csv \
+  --matrix-type pvalue --pvalue-threshold 0.05 \
+  --sign-matrix test_files/tutorial_files/node_edge_28/pvalues_28_signs.csv \
+  --edge-color-mode module \
+  --edge-width-min 1 --edge-width-max 8 \
+  --node-size tutorial/output_legend_views/sizes_from_pc.csv \
+  --node-metrics tutorial/output_legend_views/metrics.csv \
+  --node-size-legend-metric participation_coef \
+  --multi-view "left,superior,posterior" \
+  --multi-view-panel-size "800,800" \
+  --image-dpi 180 \
+  --title "Modular p-value brain, three views" \
+  --output tutorial/output_legend_views/mv_mod_dummy.html \
+  --export-image tutorial/output_legend_views/multi_view_modular.png
+```
+
 ![Multi-view modularity plot, 3 panels](../docs/images/legend_tutorial/09_mv_modular.png)
 *Multi-view stitched export of a modular p-value plot. Each panel shows the same module-colored brain from a different camera angle; module legend appears in the first panel only.*
 
@@ -467,83 +630,30 @@ fig, _ = create_brain_connectivity_plot_with_modularity(
 )
 ```
 
-![Multi-view modularity plot with the legend stripped from every panel](../docs/images/legend_tutorial/10_mv_stripped.png)
-*With `multi_view_keep_first_legend=False`, no panel keeps the legend; the brains all occupy the same width.*
-
----
-
-## 5. CLI equivalents
-
-Same features through the `hlplot` CLI. The `--custom-view` flag is
-**multi-use** — pass it once per registered view. The `--multi-view`
-flag takes a single comma-separated list that may reference both
-built-in preset names and any names registered with `--custom-view`.
-
-```bash
-hlplot plot \
-  --mesh test_files/tutorial_files/brain_mesh.gii \
-  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
-  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
-  --node-size tutorial/output_legend_views/sizes_from_pc.csv \
-  --node-metrics tutorial/output_legend_views/metrics.csv \
-  --node-size-legend-metric participation_coef \
-  --edge-width-min 1 --edge-width-max 8 \
-  --multi-view "left,superior,posterior" \
-  --multi-view-panel-size "800,800" \
-  --image-dpi 180 \
-  --output tutorial/output_legend_views/cli_mv_default_dummy.html \
-  --export-image tutorial/output_legend_views/cli_mv_default.png \
-  --title "Three views (CLI)"
-```
-
-```bash
-hlplot plot \
-  --mesh test_files/tutorial_files/brain_mesh.gii \
-  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
-  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
-  --node-size tutorial/output_legend_views/sizes_from_pc.csv \
-  --edge-width-min 1 --edge-width-max 8 \
-  --custom-view "tilted=1.5,0.8,1.2" \
-  --custom-view "low_anterior=0.0,1.8,0.3" \
-  --multi-view "left,tilted,superior,low_anterior,anterior" \
-  --multi-view-panel-size "700,700" \
-  --image-dpi 180 \
-  --output tutorial/output_legend_views/cli_mv_5panel_dummy.html \
-  --export-image tutorial/output_legend_views/cli_mv_5panel.png \
-  --title "5-panel mixed (CLI)"
-```
+#### CLI equivalent
 
 ```bash
 hlplot modular \
   --mesh test_files/tutorial_files/brain_mesh.gii \
   --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
-  --matrix test_files/tutorial_files/node_edge_28/pvalues_28.csv \
+  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
   --modules test_files/tutorial_files/node_edge_28/modules_28.csv \
-  --matrix-type pvalue \
-  --pvalue-threshold 0.05 \
-  --sign-matrix test_files/tutorial_files/node_edge_28/pvalues_28_signs.csv \
-  --edge-color-mode sign \
-  --pos-edge-color "#d62728" \
-  --neg-edge-color "#1f77b4" \
   --edge-width-min 1 --edge-width-max 8 \
   --node-size tutorial/output_legend_views/sizes_from_pc.csv \
-  --node-metrics tutorial/output_legend_views/metrics.csv \
-  --node-size-legend-metric participation_coef \
   --multi-view "left,superior,posterior" \
-  --image-dpi 200 \
-  --output tutorial/output_legend_views/cli_mv_modular_dummy.html \
-  --export-image tutorial/output_legend_views/cli_mv_modular.png \
-  --title "Modular pvalue 3 views (CLI)"
+  --multi-view-no-first-legend \
+  --image-dpi 180 \
+  --title "Three views, NO legend on any panel" \
+  --output tutorial/output_legend_views/mv_strip_dummy.html \
+  --export-image tutorial/output_legend_views/multi_view_no_legend.png
 ```
 
-These CLI invocations produce stitched PNGs equivalent to the Python
-plots in §4. The shape of `--custom-view "NAME=ex,ey,ez"` is the
-exact same eye triple a Python `dict(eye=...)` would carry — so you
-can author camera presets in either place.
+![Multi-view modularity plot with the legend stripped from every panel](../docs/images/legend_tutorial/10_mv_stripped.png)
+*With `multi_view_keep_first_legend=False`, no panel keeps the legend; the brains all occupy the same width.*
 
 ---
 
-## 6. Calling `export_multi_view_stitched_png` directly
+## 5. Calling `export_multi_view_stitched_png` directly
 
 If you've already built a figure (e.g. inside a larger pipeline) and
 just want the multi-view export step on its own, the helper is
@@ -579,7 +689,7 @@ helper_path = export_multi_view_stitched_png(
 
 ---
 
-## 7. Summary
+## 6. Summary
 
 | Feature | Auto-on? | How to disable | Notes |
 | --- | --- | --- | --- |

@@ -262,24 +262,27 @@ def export_multi_view_stitched_png(
                 'center': cam['center'],
                 'up': cam['up'],
             }
-            # Strip per-panel decorations. Annotations tagged with a
-            # name starting with "keep_" (e.g. "keep_role_legend") are
-            # preserved on the first panel ONLY when keep_first_legend
+            # Strip per-panel decorations. Annotations / shapes tagged
+            # with a name starting with "keep_" or "legend_" are
+            # preserved on the FIRST panel only when keep_first_legend
             # is True, mirroring how the plotly legend itself is kept
-            # in the first panel only. With keep_first_legend=False the
-            # user has explicitly asked for a legend-free strip, so the
-            # role legend overlay is also stripped from every panel.
+            # in the first panel only. With keep_first_legend=False
+            # the user has explicitly asked for a legend-free strip,
+            # so all legend overlays (role / size key / width key) are
+            # stripped from every panel too.
             layout['title'] = {'text': ''}
             layout['updatemenus'] = []
-            layout['shapes'] = []
             anns = layout.get('annotations') or []
+            shapes = layout.get('shapes') or []
             if keep_first_legend and i == 0:
-                layout['annotations'] = [
-                    a for a in anns
-                    if (a.get('name') or '').startswith('keep_')
-                ]
+                def _keep_panel(item):
+                    n = (item.get('name') or '')
+                    return n.startswith('keep_') or n.startswith('legend_')
+                layout['annotations'] = [a for a in anns if _keep_panel(a)]
+                layout['shapes'] = [s for s in shapes if _keep_panel(s)]
             else:
                 layout['annotations'] = []
+                layout['shapes'] = []
             if not (keep_first_legend and i == 0):
                 layout['showlegend'] = False
             # Tight per-panel margins so the brain fills the panel and
@@ -516,27 +519,44 @@ def _add_size_width_legend(
     current_b = 80
     if fig.layout.margin is not None and fig.layout.margin.b is not None:
         current_b = int(fig.layout.margin.b)
-    fig.update_layout(margin=dict(b=current_b + extra_b_px))
+    new_b = current_b + extra_b_px
+    fig.update_layout(margin=dict(b=new_b))
+
+    # Plot-area dimensions (in pixels) AFTER the bottom-margin bump.
+    # Paper-coord shapes in plotly map [0, 1] across the PLOT AREA, NOT
+    # the full figure. Computing rx/ry from these makes the sample dots
+    # render as actual circles regardless of the plot-area aspect ratio.
+    margin_l = 80
+    margin_r = 80
+    margin_t = 100
+    if fig.layout.margin is not None:
+        if fig.layout.margin.l is not None:
+            margin_l = int(fig.layout.margin.l)
+        if fig.layout.margin.r is not None:
+            margin_r = int(fig.layout.margin.r)
+        if fig.layout.margin.t is not None:
+            margin_t = int(fig.layout.margin.t)
+    plot_w = max(1.0, fig_w - margin_l - margin_r)
+    plot_h = max(1.0, fig_h - margin_t - new_b)
 
     # ------------------------------------------------------------------
     # Block layout (paper coords).
     #
     # Stack the blocks vertically from the BOTTOM up so the lowest label
-    # is always at the same fixed y, just above the small "V2: Camera
-    # controls enabled" annotation in the corner. This way single-block
-    # and double-block layouts both look right.
+    # is always at the same fixed y. The legend sits low enough to
+    # clear the brain plot regardless of camera angle.
     # ------------------------------------------------------------------
     title_dy = 0.024            # title sits this far ABOVE marker row
     label_dy = 0.024            # label sits this far BELOW marker row
-    block_height = 0.075        # vertical span of one block
+    block_height = 0.085        # vertical span of one block (slightly taller for breathing room)
     entry_spacing = 0.060       # horizontal distance between consecutive samples
     total_width = entry_spacing * (n_entries - 1)
     x_start = x_center - total_width / 2.0
 
-    # Lowest (bottom-most) block's marker row y-coord. Below it sits the
-    # label row at y_label_bottom = y_marker_bottom - label_dy. We want
-    # that label row to clear the V2 annotation at y=0.01, so set:
-    y_marker_bottom = 0.05
+    # Lowest (bottom-most) block's marker row y-coord. Lowered from
+    # 0.05 to 0.02 per request so the legend sits closer to the bottom
+    # edge and gives the brain plot more vertical room.
+    y_marker_bottom = 0.02
     # Block 1 (the topmost) marker is at:
     y_marker_top = y_marker_bottom + (n_blocks - 1) * block_height
 
@@ -585,6 +605,7 @@ def _add_size_width_legend(
         if sample_labels:
             # Title
             new_annotations.append(dict(
+                name='legend_size_title',
                 text=f"<b>{node_size_legend_title}</b>",
                 showarrow=False,
                 xref='paper', yref='paper',
@@ -593,19 +614,17 @@ def _add_size_width_legend(
                 font=dict(size=11, color='black'),
             ))
             # Sample dots: drawn as filled circle shapes in paper coords.
-            # PAPER COORDS ARE NOT SQUARE -- they go from 0..1 in both
-            # axes but the figure isn't (1200 x 900 by default), so a
-            # paper-coord "circle" with rx=ry comes out as an ellipse.
-            # We compensate by computing rx and ry from the SAME pixel
-            # diameter via the figure's actual width/height. The diameter
-            # we use is the LITERAL pixel size of the corresponding node
-            # marker so the legend dots match the brain dots visually.
+            # PAPER COORDS ARE NOT SQUARE -- they map [0, 1] across the
+            # PLOT AREA (figure minus margins), which is wider than tall.
+            # Use plot_w / plot_h (computed above) to get equal pixel
+            # radii so the dots come out as circles, not ellipses.
             for i, (lab, px) in enumerate(zip(sample_labels, sample_sizes_px)):
                 xc = x_start + i * entry_spacing
                 diameter_px = float(px)
-                rx_paper = (diameter_px / 2.0) / fig_w
-                ry_paper = (diameter_px / 2.0) / fig_h
+                rx_paper = (diameter_px / 2.0) / plot_w
+                ry_paper = (diameter_px / 2.0) / plot_h
                 new_shapes.append(dict(
+                    name=f'legend_size_dot_{i}',
                     type='circle',
                     xref='paper', yref='paper',
                     x0=xc - rx_paper, x1=xc + rx_paper,
@@ -614,6 +633,7 @@ def _add_size_width_legend(
                     line=dict(color='rgba(40, 20, 80, 0.95)', width=1),
                 ))
                 new_annotations.append(dict(
+                    name=f'legend_size_label_{i}',
                     text=lab,
                     showarrow=False,
                     xref='paper', yref='paper',
@@ -663,6 +683,7 @@ def _add_size_width_legend(
 
             if sample_labels:
                 new_annotations.append(dict(
+                    name='legend_width_title',
                     text=f"<b>{edge_width_legend_title}</b>",
                     showarrow=False,
                     xref='paper', yref='paper',
@@ -678,6 +699,7 @@ def _add_size_width_legend(
                     xc = x_start + i * entry_spacing
                     half = 0.020  # half-length of the sample line in paper coords
                     new_shapes.append(dict(
+                        name=f'legend_width_line_{i}',
                         type='line',
                         xref='paper', yref='paper',
                         x0=xc - half, x1=xc + half,
@@ -688,6 +710,7 @@ def _add_size_width_legend(
                         ),
                     ))
                     new_annotations.append(dict(
+                        name=f'legend_width_label_{i}',
                         text=lab,
                         showarrow=False,
                         xref='paper', yref='paper',
@@ -924,15 +947,25 @@ def _export_figure_static(
     fig_dict = fig.to_dict()
     if 'layout' in fig_dict:
         fig_dict['layout']['updatemenus'] = []
-        # Strip interactive UI annotations (camera-controls overlay,
-        # toolbar instructions, etc.) but preserve any annotation that
-        # was explicitly tagged for export with a name starting with
-        # "keep_" (e.g. the role legend, the edge-width legend labels).
+        # Selectively strip interactive UI overlays. Naming convention
+        # for paper-coord shapes & annotations:
+        #   - name='keep_*'   : ALWAYS preserved on export.
+        #   - name='legend_*' : preserved iff export_show_legend=True
+        #                       (covers size key, width key, role legend).
+        #   - everything else : stripped (camera-controls overlay, ad-hoc
+        #                       UI text, etc.).
+        def _keep(item):
+            n = (item.get('name') or '')
+            if n.startswith('keep_'):
+                return True
+            if n.startswith('legend_'):
+                return bool(export_show_legend)
+            return False
+
         anns = fig_dict['layout'].get('annotations') or []
-        fig_dict['layout']['annotations'] = [
-            a for a in anns
-            if (a.get('name') or '').startswith('keep_')
-        ]
+        fig_dict['layout']['annotations'] = [a for a in anns if _keep(a)]
+        shapes = fig_dict['layout'].get('shapes') or []
+        fig_dict['layout']['shapes'] = [s for s in shapes if _keep(s)]
         fig_dict['layout']['paper_bgcolor'] = 'white'
         fig_dict['layout']['plot_bgcolor'] = 'white'
         if not export_show_title:
@@ -3180,7 +3213,7 @@ def create_brain_connectivity_plot_with_modularity(
             role_legend_text = "<br>".join(lines)
             existing_annotations = list(getattr(fig.layout, 'annotations', None) or [])
             existing_annotations.append(dict(
-                name="keep_role_legend",
+                name="legend_role",
                 text=role_legend_text,
                 showarrow=False,
                 xref="paper", yref="paper",
