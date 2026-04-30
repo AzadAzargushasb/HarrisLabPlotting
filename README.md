@@ -83,17 +83,223 @@ Notes:
 
 ---
 
-## What you need to make a plot
+## Data pipeline
 
-Every plot consumes three inputs:
+Every plot consumes **three required inputs** and there is one
+**non-negotiable constraint** on how they relate to each other. Read
+this once and the rest of the tutorials will make sense.
 
-| Input | Typical extensions | How to get it |
-|---|---|---|
-| Brain mesh | `.gii`, `.obj`, `.ply`, `.mz3` | Convert a NIfTI volume — see [tutorial/MESH_CREATION_GUIDE.md](tutorial/MESH_CREATION_GUIDE.md) (nii2mesh web / CLI, or Surfice). |
-| ROI coordinates | `.csv` with `cog_x, cog_y, cog_z, roi_name` | Generate with `hlplot coords generate` from a NIfTI atlas, or supply your own CSV. |
-| Connectivity matrix | `.npy`, `.csv`, `.edge`, `.txt`, `.mat` | Whatever statistical pipeline produces your matrix. Can be raw weights or p-values. |
+### The three required inputs
 
-Tutorial files for all three live in [test_files/tutorial_files/](test_files/tutorial_files/) so every example in the docs is reproducible out of the box.
+#### 1. Brain mesh — the anatomical surface
+
+A 3D triangular mesh of the brain. This is the gray semi-transparent
+shell that nodes and edges get drawn ON. Without a mesh, the plot
+would just be floating dots in empty space with no anatomical
+context — there'd be no way to tell whether a node is in cortex,
+thalamus, or off the brain entirely.
+
+**Formats:** `.gii` (GIFTI, recommended — the standard neuroimaging
+format), `.obj` (Wavefront, common 3D format), `.ply`, `.mz3`
+(Surfice native). GIFTI uses NIFTI intent codes
+(`NIFTI_INTENT_POINTSET` for vertices, `NIFTI_INTENT_TRIANGLE` for
+faces) and is what most neuroimaging pipelines emit.
+
+**Where it comes from:** you almost never have a mesh ready to go.
+You take a NIfTI volume of your brain atlas / parcellation and convert
+it to a surface mesh using nii2mesh, Surfice, or similar — see
+[tutorial/MESH_CREATION_GUIDE.md](tutorial/MESH_CREATION_GUIDE.md).
+This is a one-time step per atlas.
+
+#### 2. ROI coordinates — where each region lives in the mesh's space
+
+A CSV with one row per region of interest (ROI), giving each ROI a
+spatial position (`cog_x, cog_y, cog_z`) and a name (`roi_name`).
+This is what tells the package **where to draw each node**.
+
+The connectivity matrix only knows about ROIs by integer index
+(`0, 1, 2, …`) — it has no idea where in 3D space ROI #5 actually
+sits. The coordinates file is the bridge from those integer indices
+to xyz positions on the mesh. Without it, the package would have
+nowhere to place nodes.
+
+**Format:** comma- or tab-delimited CSV with at minimum `cog_x`,
+`cog_y`, `cog_z`, and `roi_name` columns. Extra columns
+(`participation_coef`, `within_module_zscore`, etc.) are tolerated
+and surface as hover-tooltip metadata when you pass them via
+`--node-metrics`.
+
+**Where it comes from:** `hlplot coords generate` reads a labeled
+NIfTI atlas plus a labels file and computes the center of gravity of
+every labeled voxel cluster, writing one row per ROI. You can also
+hand-author a CSV (MNI peak coords from a paper, atlas tables, etc.)
+as long as the coordinates are in the same space as the mesh.
+
+#### 3. Connectivity matrix — the actual data being visualized
+
+A square N×N matrix where cell `[i, j]` is the connection strength
+(or p-value, correlation, t-stat, …) between ROI `i` and ROI `j`.
+This is the actual signal the plot communicates — anatomy + ROI
+placement only matter because they're the canvas this matrix paints
+onto.
+
+**Formats:** `.npy` (NumPy binary, fastest), `.csv`, `.txt`, `.edge`
+(BrainNet Viewer), `.mat` (MATLAB). Cells may be raw weights (use
+`--matrix-type weight`, the default) or p-values (use
+`--matrix-type pvalue` — see
+[tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md)).
+
+**Where it comes from:** whatever statistical pipeline produced it —
+GraphVar, Brain Connectivity Toolbox, NBS, GLM contrasts, your own
+permutation test. The package doesn't care, as long as the matrix is
+square and its row/column ordering matches the ROI ordering in the
+coordinates file.
+
+### ⚠️ The coordinate-space contract
+
+> **All three files MUST share the same atlas / coordinate space and
+> the same ROI ordering.** The connectivity matrix is N×N; the coords
+> file has N rows in the same order; the mesh occupies the same
+> anatomical space those coords sit in.
+
+**The most common mistake:** matrix is 28×28 but the coords file has
+170 ROIs. Symptom: `Matrix size (28) differs from ROI count (170)`
+error. Fix: use `hlplot coords map-subset` to extract only the 28
+coords your matrix indexes (see step 3 below), then re-run.
+
+A second, subtler mistake: matrix and coords have the same N but
+different ROI ordering — the plot draws but the ROI labels don't
+match the actual data. There's no automatic check for this; the
+fix is to make sure both come from the same labels file.
+
+### Starting from a NIfTI atlas (typical workflow)
+
+Most users start with a single NIfTI volume of a labeled parcellation
+(`brain_atlas.nii.gz`) plus a connectivity matrix from their analysis
+pipeline. The mesh and the coordinates file both come *out* of that
+NIfTI:
+
+```
+                      ┌─────────────────────────┐
+                      │   NIfTI Volume File     │
+                      │   (brain_atlas.nii.gz)  │
+                      └───────────┬─────────────┘
+                                  │
+           ┌──────────────────────┼──────────────────────┐
+           │                      │                      │
+           ▼                      ▼                      │
+    ┌─────────────┐      ┌─────────────────┐            │
+    │ Create Mesh │      │ Generate ROI    │            │
+    │ (Surfice or │      │ Coordinates     │            │
+    │ nii2mesh)   │      │ (hlplot coords  │            │
+    └──────┬──────┘      │  generate)      │            │
+           │             └────────┬────────┘            │
+           │                      │                     │
+           │                      ▼                     │
+           │             ┌─────────────────┐            │
+           │             │ Map to Subset   │            │
+           │             │ (Optional)      │            │
+           │             │ (hlplot coords  │            │
+           │             │  map-subset)    │            │
+           │             └────────┬────────┘            │
+           │                      │                     │
+           └──────────┬───────────┘                     │
+                      │                                 │
+                      ▼                                 │
+              ┌───────────────┐     ┌───────────────┐   │
+              │  Mesh File    │     │ Connectivity  │◄──┘
+              │  (brain.gii)  │     │ Matrix        │ (your data)
+              └───────┬───────┘     └───────┬───────┘
+                      │                     │
+                      └──────────┬──────────┘
+                                 │
+                                 ▼
+                      ┌─────────────────────┐
+                      │ hlplot plot/modular │
+                      │ (Visualization)     │
+                      └─────────────────────┘
+```
+
+### Pipeline steps explained
+
+#### Step 1 — NIfTI volume → brain mesh (one-time, external tool)
+
+**What it does:** converts the volumetric atlas (a 3D array of integer
+labels, one per voxel) into a triangular surface mesh that wraps the
+labeled voxels.
+
+**Why you need it:** Plotly's 3D scenes render meshes, not voxel
+grids. The mesh is what gives the brain its shape — without it, none
+of the nodes or edges are anatomically grounded. Run this once per
+atlas; the resulting `.gii` is reusable across every plot you make
+from that atlas.
+
+**How to do it:** [tutorial/MESH_CREATION_GUIDE.md](tutorial/MESH_CREATION_GUIDE.md)
+covers the three usual options (nii2mesh web, Surfice, nii2mesh CLI).
+Three minutes once per atlas.
+
+**Common pitfall:** smoothing too aggressive → mesh loses sulci /
+gyri and looks like a balloon; smoothing too weak → mesh looks blocky
+and pixelated. The default settings in nii2mesh / Surfice are
+usually fine for a first pass.
+
+#### Step 2 — NIfTI volume → ROI coordinates (one-time, `hlplot coords generate`)
+
+**What it does:** for every integer label in the NIfTI atlas, computes
+the center of gravity (mean voxel position, in the volume's world
+coordinates) of that label's region and records it in a CSV. Output
+has one row per ROI with `cog_x, cog_y, cog_z, roi_name`.
+
+**Why you need it:** the connectivity matrix indexes ROIs by integer
+position (0..N) but says nothing about spatial location. The
+coordinates file is what tells `hlplot` where to draw node 5 in 3D.
+Run this once per atlas; the resulting CSV is reusable across every
+plot you make from that atlas (subject only to the optional subset
+mapping in step 3).
+
+**Common pitfall:** the labels file must list *every* integer label
+present in the NIfTI volume. Missing labels → ROIs without names →
+they get silently dropped from the output CSV, which then doesn't
+match your connectivity matrix's row count.
+
+#### Step 3 — Map to subset (optional, `hlplot coords map-subset`)
+
+**What it does:** filters the full atlas's coords CSV down to a subset
+of ROIs that match a specific connectivity matrix.
+
+**Why you need it:** standard atlases often have 170+ ROIs but
+real-world matrices are usually a subset (28, 64, 114). The
+connectivity matrix and the coords file need to have the same N in
+the same order — see the coordinate-space contract above. This step
+is what enforces that contract when your matrix doesn't cover the
+whole atlas. Skip it if your matrix already has one row per atlas
+ROI in atlas order.
+
+**How to do it:** pass either a `.node` file (BrainNet Viewer format,
+ROI list with coords), a `.txt` of ROI names (one per line), or a
+`.csv` with a `roi_name` column. The output CSV keeps only the rows
+whose names appear in the subset, in subset order.
+
+#### Step 4 — Make the plot (`hlplot plot` or `hlplot modular`)
+
+**What it does:** loads the mesh, coords, and matrix; builds the
+interactive 3D plot; writes an HTML file; and optionally exports a
+static PNG / SVG / PDF.
+
+**Why you need it:** this is the actual visualization. Everything
+above just gets the inputs ready; this step is where the figure gets
+produced. From here on, all the customization knobs (node colors,
+edge widths, multi-view export, p-value mode, modularity, role
+classification, …) are flags on this step.
+
+**How to do it:** see the [Quick start](#quick-start) below for the
+minimal command, or
+[tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) for every flag
+demonstrated end-to-end on the shipped tutorial data.
+
+Tutorial files for all three required inputs live in
+[test_files/tutorial_files/](test_files/tutorial_files/) so every
+example in the docs is reproducible out of the box.
 
 ---
 
@@ -165,7 +371,7 @@ for runnable snippets, flag explanations, and expected output.
 - **Static image export** — `--export-image` for PNG/SVG/PDF via kaleido; `--export-no-title` / `--export-no-legend` for clean figures. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §8–9.
 - **Multi-view stitched PNG** — re-render N camera angles into a single 1×N strip via `--multi-view` / `export_multi_view_stitched_png`. See [tutorial/legend key and 3 view display test.ipynb](tutorial/legend%20key%20and%203%20view%20display%20test.ipynb) §4.
 - **Camera views + custom cameras** — 9 presets, `--custom-camera-eye/center/up`, live camera-readout overlay. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §14.
-- **Batch processing** — YAML-driven `hlplot batch --config` for many subjects / contrasts. See [tutorial/README.md](tutorial/README.md) §11.
+- **Batch processing** — YAML-driven `hlplot batch --config` for many subjects / contrasts. Run `hlplot batch --help` for the full flag list.
 - **Utilities** — `hlplot utils info` / `validate` / `threshold` / `convert`. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §6.
 
 ---
@@ -217,12 +423,12 @@ Run `hlplot <command> --help` for the full flag list of any sub-command.
 
 Everything beyond the basics lives in [tutorial/](tutorial/):
 
-- [tutorial/README.md](tutorial/README.md) — **the master walkthrough**: installation, end-to-end pipeline, parameter reference, troubleshooting.
 - [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) — every CLI flag demonstrated on the shipped 28- and 114-ROI tutorial data.
 - [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md) — p-value matrices, `-log10(p)` transform, signed p-values, per-edge color matrices.
+- [tutorial/LEGEND_AND_MULTIVIEW_TUTORIAL.md](tutorial/LEGEND_AND_MULTIVIEW_TUTORIAL.md) — size / width legend keys and multi-view stitched PNG export, with side-by-side Python + CLI examples.
 - [tutorial/MESH_CREATION_GUIDE.md](tutorial/MESH_CREATION_GUIDE.md) — converting a NIfTI volume into a brain mesh.
-- [tutorial/legend key and 3 view display test.ipynb](tutorial/legend%20key%20and%203%20view%20display%20test.ipynb) — size / width legend keys and multi-view stitched PNG export.
-- [tutorial/pvalue plotting tutorial.ipynb](tutorial/pvalue%20plotting%20tutorial.ipynb) — the p-value tutorial as a runnable notebook.
+- [tutorial/legend key and 3 view display test.ipynb](tutorial/legend%20key%20and%203%20view%20display%20test.ipynb) — runnable notebook version of the legend / multi-view tutorial.
+- [tutorial/pvalue plotting tutorial.ipynb](tutorial/pvalue%20plotting%20tutorial.ipynb) — runnable notebook version of the p-value tutorial.
 - [brain connectivity example.ipynb](brain%20connectivity%20example.ipynb) — an end-to-end example at the repo root.
 
 ---
