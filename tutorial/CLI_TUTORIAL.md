@@ -208,6 +208,9 @@ hlplot plot \
   --hide-nodes-with-hidden-edges
 ```
 
+![Basic 28-ROI connectivity network, superior view](../docs/images/cli_tutorial/04_basic_28roi.png)
+*Static snapshot of `output/test1_basic_28roi.html` — 28 nodes, sign-colored edges scaled by `|weight|`, viewed from above.*
+
 ### Expected Output
 
 - 28 nodes, 27 edges
@@ -252,6 +255,9 @@ hlplot plot \
   --node-metrics k5_state_0/combined_metrics.csv \
   --hide-nodes-with-hidden-edges
 ```
+
+![114-ROI network with hover metrics](../docs/images/cli_tutorial/05_114roi_metrics.png)
+*Static snapshot of `output/test2_114roi_metrics.html` — full 114-node network in oblique view. In the live HTML each node's hover tooltip shows `module`, `participation_coef`, `within_module_zscore`, etc. from `combined_metrics.csv`.*
 
 ### Expected Output
 
@@ -339,6 +345,9 @@ hlplot plot \
   --camera anterior
 ```
 
+![Fixed edge width: every line is 2 px](../docs/images/cli_tutorial/07_fixed_width.png)
+*Static snapshot — every edge renders at the same 2-px width regardless of `|weight|`. Useful when significance is encoded by color rather than width.*
+
 ### Flag Explanations
 
 | Flag | Description |
@@ -365,6 +374,9 @@ hlplot plot \
   --image-dpi 300
 ```
 
+![PNG export — superior view, 114 ROIs](../docs/images/cli_tutorial/08a_png.png)
+*Static snapshot of the same plot exported as a PNG. Sharp at any zoom; `--image-dpi` controls effective resolution.*
+
 ### 8b. SVG Export (Vector)
 
 ```bash
@@ -378,6 +390,9 @@ hlplot plot \
   --export-image output/test5b_brain_network.svg
 ```
 
+![SVG export preview — oblique view](../docs/images/cli_tutorial/08b_svg.png)
+*PNG preview of the SVG content. The actual SVG output is resolution-independent (vectors), great for publication figures and arbitrary zoom.*
+
 ### 8c. PDF Export (Publication)
 
 ```bash
@@ -390,6 +405,9 @@ hlplot plot \
   --camera anterior \
   --export-image output/test5c_brain_network.pdf
 ```
+
+![PDF export preview — anterior view](../docs/images/cli_tutorial/08c_pdf.png)
+*PNG preview of the PDF export. Same vector quality as SVG, embeds cleanly in LaTeX/Word.*
 
 ### Flag Explanations
 
@@ -421,6 +439,9 @@ hlplot plot \
   --image-dpi 150
 ```
 
+![Clean PNG: no title, no legend](../docs/images/cli_tutorial/09a_clean.png)
+*Static snapshot — title and legend are stripped from the export so the figure drops straight into a paper with your own caption.*
+
 ### 9b. Title Only (No Legend)
 
 ```bash
@@ -435,6 +456,9 @@ hlplot plot \
   --export-no-legend
 ```
 
+![Title kept, legend stripped](../docs/images/cli_tutorial/09b_title_only.png)
+*Static snapshot — `--export-no-legend` removes the legend but keeps the title.*
+
 ### 9c. Clean PDF (Publication)
 
 ```bash
@@ -448,6 +472,9 @@ hlplot plot \
   --export-no-title \
   --export-no-legend
 ```
+
+![Clean PDF preview — left lateral view](../docs/images/cli_tutorial/09c_clean_pdf.png)
+*PNG preview of the clean PDF export — same plot from the left lateral view, no title or legend, ready for a publication panel.*
 
 ### Flag Explanations
 
@@ -478,6 +505,9 @@ hlplot plot \
   --hide-nodes-with-hidden-edges
 ```
 
+![Node visibility toggling](../docs/images/cli_tutorial/10_node_visibility.png)
+*Static snapshot — initial state with all nodes and edges visible. In the live HTML, clicking a legend entry hides both the edges AND their connected nodes.*
+
 ### Interactive Behavior
 
 1. Click "Positive Edges" in legend → Positive edges AND their nodes hide
@@ -504,6 +534,9 @@ hlplot plot \
   --node-border-color darkgray \
   --camera oblique
 ```
+
+![Module-colored nodes](../docs/images/cli_tutorial/11_module_colors.png)
+*Static snapshot — passing a CSV of module assignments to `--node-color` auto-generates 6 distinct colors (one per module). Nodes belonging to the same module render in the same color.*
 
 ### Expected Output
 
@@ -550,6 +583,9 @@ hlplot modular \
   --camera oblique
 ```
 
+![Modularity plot with Q and Z scores in the title](../docs/images/cli_tutorial/12a_q_z.png)
+*Static snapshot — title automatically becomes `Brain Network Modularity (Q=0.452, Z=3.21)`. Default edge coloring is sign mode (red/blue).*
+
 **Output title:** "Brain Network Modularity (Q=0.452, Z=3.21)"
 
 ### 12b. Module-Colored Edges
@@ -569,6 +605,9 @@ hlplot modular \
   --camera anterior
 ```
 
+![Module-colored edges, anterior view](../docs/images/cli_tutorial/12b_module_edges.png)
+*Static snapshot — edges inherit their source module's color, so the within-module structure pops visually.*
+
 ### 12c. Sign-Colored Edges (Default)
 
 ```bash
@@ -583,6 +622,9 @@ hlplot modular \
   --node-size 10 \
   --camera oblique
 ```
+
+![Sign-colored edges with module-colored nodes](../docs/images/cli_tutorial/12c_sign_edges.png)
+*Static snapshot — same modular plot but edges keep the conventional pos/neg sign coloring. Nodes still grouped and colored by module.*
 
 ### Flag Explanations
 
@@ -637,6 +679,9 @@ hlplot plot \
   --edge-width-max 4.0 \
   --camera superior
 ```
+
+![Per-node sizes from CSV (PC-scaled)](../docs/images/cli_tutorial/13_vector_sizes.png)
+*Static snapshot — node sizes come from `output/node_sizes_by_pc.csv`, a per-node CSV mapping participation coefficient to a 5-20 px range. Nodes with higher PC are visibly larger.*
 
 ### Node Size Input Options
 

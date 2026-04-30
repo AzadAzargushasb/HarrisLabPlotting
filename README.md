@@ -116,7 +116,8 @@ hlplot plot \
   --title "My Brain Network"
 ```
 
-Opens `brain_network.html` — an interactive 3D plot of the 114-ROI connectivity matrix on the brain mesh, with sign-colored edges and a legend you can click to toggle positive/negative edges.
+![Quick-start CLI output: 114-ROI connectivity network on the standard mesh](docs/images/readme/quickstart.png)
+*Static snapshot of `brain_network.html` — an interactive 3D plot of the 114-ROI connectivity matrix on the brain mesh, with sign-colored edges and a legend you can click to toggle positive/negative edges. The Python equivalent below produces the same plot.*
 
 ### Python
 

@@ -151,6 +151,9 @@ hlplot plot \
   --edge-width-max 8
 ```
 
+![Quickstart p-value plot from above (superior view)](../docs/images/pvalue_tutorial/04_quickstart.png)
+*Static snapshot of `output/test_pval_basic.html` — 28-ROI p-value network in superior view, default `p ≤ 0.05` threshold, all surviving edges drawn in red and width-scaled by `-log10(p)`.*
+
 What happens:
 
 - `hlplot` loads the matrix, transforms it via `-log10(p)`, and drops
@@ -183,6 +186,9 @@ hlplot plot \
   --edge-width-min 1 --edge-width-max 8
 ```
 
+![Strict cutoff (p ≤ 0.01): only highly significant edges](../docs/images/pvalue_tutorial/05_strict.png)
+*Static snapshot — far fewer edges survive at the stricter `p ≤ 0.01` cutoff. Compare with the loose plot below.*
+
 ```bash
 # Loose: keep every p-value, no significance filter
 hlplot plot \
@@ -195,6 +201,9 @@ hlplot plot \
   --title "all p-values" \
   --edge-width-min 0.5 --edge-width-max 6
 ```
+
+![Loose cutoff (p ≤ 1.0): every connection drawn, width encodes significance](../docs/images/pvalue_tutorial/05_loose.png)
+*Static snapshot — with `--pvalue-threshold 1.0` no edges are dropped; line widths still scale by `-log10(p)` so the most significant connections stand out without losing the heatmap-like view.*
 
 > **Tip:** Setting `--pvalue-threshold 1.0` is the right call when you
 > want a heatmap-like plot of *every* connection, with width encoding
@@ -230,6 +239,9 @@ hlplot plot \
   --camera oblique
 ```
 
+![Signed p-values: red for positive effects, blue for negative](../docs/images/pvalue_tutorial/06_signed.png)
+*Static snapshot — edges that have a positive sign in `pvalues_28_signs.csv` render in red (`#d62728`), negative-sign edges render in blue (`#1f77b4`); width still scales by `-log10(p)`.*
+
 The sign matrix must be the same shape as the p-value matrix. Cells
 with sign `0` are kept but drawn in `--pos-edge-color` (treated as
 unsigned).
@@ -257,6 +269,9 @@ hlplot modular \
   --title "p-value modularity"
 ```
 
+![Modular p-value plot with module-colored edges](../docs/images/pvalue_tutorial/07_modular_module.png)
+*Static snapshot — nodes colored by module (4 modules), edges inherit their source module's color, width scaled by `-log10(p)`. Click a module legend entry in the HTML to hide that module's nodes and edges.*
+
 > If you don't have a `modules_28.csv` for the 28-ROI network, the
 > companion notebook generates a tiny synthetic one
 > (`(np.arange(28) % 4) + 1`) just so the modular plot has something to
@@ -279,6 +294,9 @@ hlplot modular \
   --title "p-value modularity (signed)"
 ```
 
+![Modular p-value plot with sign-colored edges](../docs/images/pvalue_tutorial/07_modular_signed.png)
+*Static snapshot — same network as above but with `--edge-color-mode sign`: nodes still colored by module, edges colored red/blue by the sign of the underlying effect.*
+
 ---
 
 ## 8. Static image export
@@ -299,6 +317,9 @@ hlplot plot \
   --export-image output/test_pval_export.pdf \
   --export-no-title --export-no-legend
 ```
+
+![Static export, signed p-values, no title or legend (publication-ready)](../docs/images/pvalue_tutorial/08_export.png)
+*Static snapshot — same plot rendered with `--export-no-title --export-no-legend` so it can drop straight into a paper figure. The bash command exports a PDF; this preview is a PNG of the same configuration.*
 
 ---
 
@@ -417,6 +438,9 @@ hlplot plot \
   --edge-color-matrix node_edge_28/edge_groups.csv \
   --output output/test_pval_grouped.html
 ```
+
+![Per-edge color matrix override: a single sub-network highlighted](../docs/images/pvalue_tutorial/10_edge_color.png)
+*Static snapshot — `edge_groups.csv` (shipped under `node_edge_28/`) labels module-1 intra-edges with `1` and leaves every other cell as `0` (skip). The package auto-colors all `1`-labeled edges with the same palette color, drawing only the highlighted sub-network.*
 
 ---
 
