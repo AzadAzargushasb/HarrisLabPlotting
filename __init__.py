@@ -74,6 +74,7 @@ from .utils import (
     load_node_metrics,
     load_edge_color_matrix,
     transform_pvalue_matrix,
+    resolve_show_node_labels,
 )
 
 # Data loaders
@@ -139,6 +140,7 @@ __all__ = [
     "load_node_metrics",
     "load_edge_color_matrix",
     "transform_pvalue_matrix",
+    "resolve_show_node_labels",
 
     # Loaders
     "NetNeurotoolsModularityLoader",

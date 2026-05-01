@@ -7,6 +7,7 @@ from pathlib import Path
 import os
 
 from ..console import console, print_success, print_error, print_warning, print_info, create_stats_table
+from .plot import _parse_show_node_labels_arg
 
 
 # Available camera view presets
@@ -156,6 +157,19 @@ CAMERA_VIEWS = [
 # === Labels and rendering ===
 @click.option("--label-font-size", default=8, type=int,
               help="Font size for ROI labels on hover. Default: 8")
+@click.option("--show-node-labels", default="true", type=str,
+              help=(
+                  "Controls which ROI text labels are rendered next to "
+                  "their node markers. Hover tooltips are always shown "
+                  "regardless of this setting. Accepts: 'true' (default; "
+                  "every ROI gets a label), 'false' (no labels), or a "
+                  "path to a CSV/TXT/NPY file containing a per-node 0/1 "
+                  "(or True/False) vector of length N where 1 = show the "
+                  "label and 0 = hide it. The CSV may have a header "
+                  "column ('show_label') or be headerless. Use this to "
+                  "label only a subset of regions in publication figures "
+                  "(e.g. only hub nodes)."
+              ))
 @click.option("--fast-render/--no-fast-render", default=False,
               help="Enable fast rendering optimizations for large networks.")
 
@@ -416,7 +430,7 @@ def modular(mesh, coords, matrix, modules, output, title, q_score, z_score,
             mesh_color, mesh_opacity,
             mesh_style, mesh_ambient, mesh_diffuse, mesh_specular,
             mesh_roughness, mesh_fresnel, mesh_light_position,
-            label_font_size, fast_render,
+            label_font_size, show_node_labels, fast_render,
             camera, enable_camera_controls,
             custom_camera_eye, custom_camera_center, custom_camera_up,
             custom_camera_name, show_camera_readout,
@@ -757,6 +771,7 @@ def modular(mesh, coords, matrix, modules, output, title, q_score, z_score,
             border_width=border_width,
             viz_type=viz_type,
             inter_edge_color=inter_edge_color,
+            show_node_labels=_parse_show_node_labels_arg(show_node_labels),
         )
 
         print_success(f"Saved interactive visualization to {output}")

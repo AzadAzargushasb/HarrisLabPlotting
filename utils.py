@@ -782,6 +782,132 @@ def load_node_metrics(
     return df
 
 
+def resolve_show_node_labels(
+    show_input: Union[bool, np.ndarray, pd.Series, List, str, None],
+    n_nodes: int,
+) -> np.ndarray:
+    """Resolve the ``show_node_labels`` parameter to a per-node bool mask.
+
+    Used by ``create_brain_connectivity_plot`` and
+    ``create_brain_connectivity_plot_with_modularity`` to control whether
+    each ROI's persistent text label is rendered next to its node marker.
+    Hover tooltips are independent of this mask -- they always show the
+    full ROI name + metadata regardless of the value here.
+
+    Parameters
+    ----------
+    show_input : bool, np.ndarray, list, pd.Series, str, or None
+        The user-supplied value. Accepted forms:
+
+        - ``True`` or ``None`` (default): every label is shown
+          (returns an all-True mask).
+        - ``False``: no labels are shown (returns an all-False mask).
+        - 1-D ``np.ndarray`` / ``list`` / ``pd.Series`` of length
+          ``n_nodes`` with 0/1 or boolean values: per-node mask, where
+          ``1`` (or ``True``) shows the label and ``0`` (or ``False``)
+          hides it.
+        - ``str``: path to a single-column CSV / TXT / NPY file
+          containing the same length-``n_nodes`` 0/1 vector. CSV may
+          have a header (e.g. ``show_label``) or be headerless;
+          delimiter is auto-detected (tab vs. comma).
+    n_nodes : int
+        Expected mask length, used both to broadcast scalar ``True`` /
+        ``False`` and to validate vector inputs.
+
+    Returns
+    -------
+    np.ndarray of dtype ``bool``, shape ``(n_nodes,)``.
+
+    Raises
+    ------
+    ValueError
+        If a vector is passed whose length does not equal ``n_nodes``,
+        or whose values are not coercible to 0/1 / True/False (e.g.
+        contains 0.5 or 2).
+    FileNotFoundError
+        If ``show_input`` is a string that does not point at an
+        existing file.
+    """
+    # Default / None / explicit True
+    if show_input is None or show_input is True:
+        return np.ones(n_nodes, dtype=bool)
+    # Explicit False
+    if show_input is False:
+        return np.zeros(n_nodes, dtype=bool)
+
+    # File path
+    if isinstance(show_input, str):
+        path = Path(show_input)
+        if not path.exists():
+            raise FileNotFoundError(
+                f"show_node_labels file not found: {show_input}"
+            )
+        suffix = path.suffix.lower()
+        if suffix == '.npy':
+            arr = np.load(path)
+        else:
+            # Auto-detect comma vs tab; tolerate optional header.
+            with open(path, 'r') as f:
+                first_line = f.readline()
+            delim = '\t' if '\t' in first_line else ','
+            try:
+                arr = np.loadtxt(path, delimiter=delim)
+            except ValueError:
+                # Header present -- fall back to pandas, take first numeric column.
+                df = pd.read_csv(path, sep=delim)
+                num_df = df.select_dtypes(include=[np.number, bool])
+                if num_df.shape[1] == 0:
+                    raise ValueError(
+                        f"show_node_labels file {show_input!r} contains "
+                        f"no numeric / boolean column."
+                    )
+                arr = num_df.iloc[:, 0].to_numpy()
+        return _validate_label_mask(arr, n_nodes, source=show_input)
+
+    # Array / list / Series
+    arr = np.asarray(show_input)
+    return _validate_label_mask(arr, n_nodes, source='input vector')
+
+
+def _validate_label_mask(
+    arr: np.ndarray,
+    n_nodes: int,
+    source: str,
+) -> np.ndarray:
+    """Coerce a numeric/boolean vector into a length-``n_nodes`` bool mask.
+
+    Accepts either booleans or 0/1 integers (or numerically-equal floats).
+    Anything else -- 0.5, 2, NaN -- is rejected with a clear ValueError so
+    user-supplied non-binary vectors fail fast instead of silently
+    rendering wrong labels.
+    """
+    arr = np.squeeze(np.asarray(arr))
+    if arr.ndim != 1:
+        raise ValueError(
+            f"show_node_labels must be 1-D; got shape {arr.shape} "
+            f"from {source}."
+        )
+    if arr.shape[0] != n_nodes:
+        raise ValueError(
+            f"show_node_labels length ({arr.shape[0]}) does not match "
+            f"the expected number of nodes ({n_nodes}); source: {source}."
+        )
+    if arr.dtype == bool:
+        return arr.copy()
+    # Numeric -- must be 0 or 1 exactly.
+    if not np.all(np.isfinite(arr)):
+        raise ValueError(
+            f"show_node_labels contains non-finite values; source: {source}."
+        )
+    if not np.all((arr == 0) | (arr == 1)):
+        bad_idx = int(np.argmax((arr != 0) & (arr != 1)))
+        raise ValueError(
+            f"show_node_labels must contain only 0/1 or True/False; "
+            f"got value {arr[bad_idx]!r} at row {bad_idx} (source: {source})."
+        )
+    return arr.astype(bool)
+
+
 def generate_module_colors(n_modules: int) -> List[str]:
     """
     Generate visually distinct colors for module assignments.

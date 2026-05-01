@@ -17,6 +17,32 @@ CAMERA_VIEWS = [
 ]
 
 
+def _parse_show_node_labels_arg(s):
+    """Parse the --show-node-labels CLI string into the value the
+    Python API accepts: ``True``, ``False``, or a file-path string.
+
+    The CLI accepts a single string for this flag because it has to
+    encode three distinct modes (everything-on, everything-off, and
+    a per-node mask file). Anything that doesn't parse as a boolean
+    is treated as a path; we validate the path exists here so the
+    user gets a clear error before any kaleido / plotting work begins.
+    """
+    if s is None:
+        return True
+    s_lower = str(s).strip().lower()
+    if s_lower in ("true", "1", "yes", "on"):
+        return True
+    if s_lower in ("false", "0", "no", "off"):
+        return False
+    p = Path(s)
+    if not p.exists():
+        raise click.BadParameter(
+            f"--show-node-labels={s!r}: not 'true'/'false' and "
+            f"file does not exist."
+        )
+    return str(p)
+
+
 @click.command()
 # === Required inputs ===
 @click.option("--mesh", "-m", required=True, type=click.Path(exists=True),
@@ -151,6 +177,19 @@ CAMERA_VIEWS = [
 # === Labels and rendering ===
 @click.option("--label-font-size", default=8, type=int,
               help="Font size for ROI labels on hover. Default: 8")
+@click.option("--show-node-labels", default="true", type=str,
+              help=(
+                  "Controls which ROI text labels are rendered next to "
+                  "their node markers. Hover tooltips are always shown "
+                  "regardless of this setting. Accepts: 'true' (default; "
+                  "every ROI gets a label), 'false' (no labels), or a "
+                  "path to a CSV/TXT/NPY file containing a per-node 0/1 "
+                  "(or True/False) vector of length N where 1 = show the "
+                  "label and 0 = hide it. The CSV may have a header "
+                  "column ('show_label') or be headerless. Use this to "
+                  "label only a subset of regions in publication figures "
+                  "(e.g. only hub nodes)."
+              ))
 @click.option("--fast-render/--no-fast-render", default=False,
               help="Enable fast rendering optimizations for large networks.")
 
@@ -368,7 +407,7 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
          mesh_color, mesh_opacity,
          mesh_style, mesh_ambient, mesh_diffuse, mesh_specular,
          mesh_roughness, mesh_fresnel, mesh_light_position,
-         label_font_size, fast_render,
+         label_font_size, show_node_labels, fast_render,
          camera, enable_camera_controls,
          custom_camera_eye, custom_camera_center, custom_camera_up,
          custom_camera_name, show_camera_readout,
@@ -652,6 +691,7 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
             mesh_color=mesh_color,
             mesh_opacity=mesh_opacity,
             label_font_size=label_font_size,
+            show_node_labels=_parse_show_node_labels_arg(show_node_labels),
             fast_render=fast_render,
             camera_view=camera,
             enable_camera_controls=enable_camera_controls,

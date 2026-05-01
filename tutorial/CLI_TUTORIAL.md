@@ -31,7 +31,8 @@ output/
 11. [Node Colors from Modules](#11-node-colors-from-modules)
 12. [Modularity Visualization](#12-modularity-visualization)
 13. [Vector Node Sizes from CSV](#13-vector-node-sizes-from-csv)
-14. [Command Reference](#14-command-reference)
+14. [Selectively Labelling ROIs](#14-selectively-labelling-rois)
+15. [Command Reference](#15-command-reference)
 
 ---
 
@@ -693,7 +694,180 @@ hlplot plot \
 
 ---
 
-## 14. Command Reference
+## 14. Selectively Labelling ROIs
+
+Dense networks quickly become unreadable when every ROI gets a text label.
+The `--show-node-labels` flag lets you label only the regions you want
+to call out — for example, only the network's hub nodes — and hide the
+rest, while still letting readers hover over any unlabelled node in the
+saved HTML to discover its name. Hover tooltips are completely
+independent of this flag.
+
+The flag accepts three forms:
+
+| Form | Effect |
+|------|--------|
+| `--show-node-labels true` *(default)* | Every ROI gets a persistent label. |
+| `--show-node-labels false` | No persistent labels; hover still reveals names. |
+| `--show-node-labels path/to/mask.csv` | Per-node 0/1 mask — `1` shows the label, `0` hides it. |
+
+The same flag exists on `hlplot modular`, with identical semantics.
+
+### 14a. Default — every ROI labelled
+
+```bash
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_test_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge \
+  --output output/labels_default.html \
+  --export-image output/labels_default.png \
+  --image-dpi 150
+```
+
+![28-ROI network with every ROI labelled (default)](../docs/images/cli_tutorial/14a_labels_default.png)
+*Default `--show-node-labels true`: 28 ROI labels render at once. Useful
+for exploration, dense at publication scale.*
+
+### 14b. All labels off
+
+```bash
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_test_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge \
+  --show-node-labels false \
+  --output output/labels_off.html \
+  --export-image output/labels_off.png \
+  --image-dpi 150
+```
+
+![28-ROI network with no persistent labels](../docs/images/cli_tutorial/14b_labels_off.png)
+*With `--show-node-labels false` the brain renders cleanly with no text
+clutter. The saved HTML still shows ROI names on hover.*
+
+### 14c. Label only the hub nodes (mask CSV)
+
+The repository ships an example mask that labels only the six
+highest-degree ROIs in `connectivity_28.edge`:
+
+```bash
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_test_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge \
+  --show-node-labels node_edge_28/show_labels_hubs_28.csv \
+  --output output/labels_hubs.html \
+  --export-image output/labels_hubs.png \
+  --image-dpi 150
+```
+
+![28-ROI network with only the six hub ROIs labelled](../docs/images/cli_tutorial/14c_labels_hubs.png)
+*With a per-node mask CSV, only the six top-degree hubs (V1_left,
+PtPD_left, SaA_right, SaM_right, Thalamus_A_right, SaA_left) are
+labelled. Every other node still appears, edges are unaffected, and
+hover tooltips still surface the unlabelled ROI names on demand.*
+
+### CSV mask format
+
+The mask is a single-column file with one row per ROI in the same
+order as your coordinates and matrix. The header is optional; when
+present, name it `show_label`:
+
+```csv
+show_label
+0
+1
+0
+0
+0
+0
+0
+1
+... (28 rows total)
+```
+
+Values can be `0` / `1`, `True` / `False`, or boolean. The file may be
+a `.csv`, `.txt` (tab- or comma-delimited, with or without header),
+or a `.npy` array.
+
+### Building your own mask
+
+Any selection rule that produces a length-`N` 0/1 vector works. For the
+canonical "label only the top-`k` hubs" recipe:
+
+```python
+import numpy as np
+import pandas as pd
+
+matrix = np.loadtxt("node_edge_28/connectivity_28.edge", delimiter="\t")
+abs_mat = np.abs(matrix)
+np.fill_diagonal(abs_mat, 0)
+degree = (abs_mat > 0).sum(axis=0)
+
+TOP = 6
+hubs = np.argsort(degree)[::-1][:TOP]
+
+mask = np.zeros(len(degree), dtype=int)
+mask[hubs] = 1
+pd.DataFrame({"show_label": mask}).to_csv(
+    "node_edge_28/show_labels_hubs_28.csv", index=False
+)
+```
+
+Other useful patterns:
+
+- **One hemisphere only**: `mask = np.array(["_left" in name for name in roi_names], dtype=int)`.
+- **One module only**: `mask = (modules == 1).astype(int)`.
+- **Hand-picked ROIs**: edit the CSV by hand and write `1` next to the
+  rows you want to call out.
+
+### Python API
+
+The same parameter is available directly on the Python plotting
+functions and accepts `True`, `False`, a numpy array / list / pandas
+Series of 0/1, or a CSV path:
+
+```python
+from HarrisLabPlotting import (
+    load_mesh_file,
+    create_brain_connectivity_plot,
+    create_brain_connectivity_plot_with_modularity,
+)
+
+vertices, faces = load_mesh_file("brain_mesh.gii")
+coords = pd.read_csv("output/atlas_28_test_comma.csv")
+
+# Labels only on the hub ROIs (path)
+fig, _ = create_brain_connectivity_plot(
+    vertices=vertices, faces=faces, roi_coords_df=coords,
+    connectivity_matrix="node_edge_28/connectivity_28.edge",
+    show_node_labels="node_edge_28/show_labels_hubs_28.csv",
+    save_path="output/labels_hubs.html",
+)
+
+# Equivalent with an explicit boolean array
+import numpy as np
+mask = np.zeros(28, dtype=bool)
+mask[[1, 7, 16, 17, 18, 24]] = True  # the same six indices
+
+fig, _ = create_brain_connectivity_plot_with_modularity(
+    vertices=vertices, faces=faces, roi_coords_df=coords,
+    connectivity_matrix="node_edge_28/connectivity_28.edge",
+    module_assignments="node_edge_28/modules_28.csv",
+    show_node_labels=mask,
+    save_path="output/labels_hubs_modular.html",
+)
+```
+
+> **Note:** `show_node_labels` only affects the *persistent* text
+> label that draws next to each node marker. The hover tooltip in the
+> saved HTML always shows the full ROI name, module, and any node
+> metrics, regardless of mask.
+
+---
+
+## 15. Command Reference
 
 ### Main Commands
 

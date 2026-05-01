@@ -29,6 +29,7 @@ from .utils import (
     generate_module_colors,
     load_edge_color_matrix,
     transform_pvalue_matrix,
+    resolve_show_node_labels,
 )
 
 
@@ -1065,6 +1066,7 @@ def create_brain_connectivity_plot(
     multi_view_panel_labels: Optional[List[str]] = None,
     multi_view_keep_first_legend: bool = True,
     multi_view_zoom: float = 1.0,
+    show_node_labels: Union[bool, np.ndarray, pd.Series, List, str, None] = True,
 ):
     """
     Create an interactive 3D brain connectivity visualization.
@@ -1399,6 +1401,12 @@ def create_brain_connectivity_plot(
     # Get number of nodes
     n_nodes = len(roi_coords_df)
 
+    # Resolve the show_node_labels mask once. The mask is indexed by the
+    # absolute ROI index (matching positions in roi_coords_df), so the
+    # per-trace masking below can look up label visibility regardless of
+    # which subset of nodes a particular trace ends up rendering.
+    label_mask_full = resolve_show_node_labels(show_node_labels, n_nodes)
+
     # Convert node_size to array
     node_sizes = convert_node_size_input(node_size, n_nodes, default_size=8.0)
 
@@ -1729,6 +1737,10 @@ def create_brain_connectivity_plot(
             node_y = [G_all.nodes[n]['y'] for n in pos_linked_nodes]
             node_z = [G_all.nodes[n]['z'] for n in pos_linked_nodes]
             node_labels = [G_all.nodes[n]['label'] for n in pos_linked_nodes]
+            display_labels = [
+                lbl if label_mask_full[n] else ""
+                for n, lbl in zip(pos_linked_nodes, node_labels)
+            ]
             node_sizes_pos = [G_all.nodes[n]['size'] for n in pos_linked_nodes]
             node_hovers = [build_node_hover(n, G_all.nodes[n]['label']) for n in pos_linked_nodes]
 
@@ -1747,7 +1759,7 @@ def create_brain_connectivity_plot(
                     opacity=0.9,
                     line=dict(color=node_border_color, width=1)
                 ),
-                text=node_labels,
+                text=display_labels,
                 textposition='top center',
                 textfont=dict(size=label_font_size, color='black', family='Arial'),
                 hoverinfo='text',
@@ -1764,6 +1776,10 @@ def create_brain_connectivity_plot(
             node_y = [G_all.nodes[n]['y'] for n in neg_linked_nodes]
             node_z = [G_all.nodes[n]['z'] for n in neg_linked_nodes]
             node_labels = [G_all.nodes[n]['label'] for n in neg_linked_nodes]
+            display_labels = [
+                lbl if label_mask_full[n] else ""
+                for n, lbl in zip(neg_linked_nodes, node_labels)
+            ]
             node_sizes_neg = [G_all.nodes[n]['size'] for n in neg_linked_nodes]
             node_hovers = [build_node_hover(n, G_all.nodes[n]['label']) for n in neg_linked_nodes]
 
@@ -1782,7 +1798,7 @@ def create_brain_connectivity_plot(
                     opacity=0.9,
                     line=dict(color=node_border_color, width=1)
                 ),
-                text=node_labels,
+                text=display_labels,
                 textposition='top center',
                 textfont=dict(size=label_font_size, color='black', family='Arial'),
                 hoverinfo='text',
@@ -1798,6 +1814,10 @@ def create_brain_connectivity_plot(
         node_y = [G_all.nodes[n]['y'] for n in active_nodes]
         node_z = [G_all.nodes[n]['z'] for n in active_nodes]
         node_labels = [G_all.nodes[n]['label'] for n in active_nodes]
+        display_labels = [
+            lbl if label_mask_full[n] else ""
+            for n, lbl in zip(active_nodes, node_labels)
+        ]
         node_sizes_all = [G_all.nodes[n]['size'] for n in active_nodes]
         node_hovers = [build_node_hover(n, G_all.nodes[n]['label']) for n in active_nodes]
 
@@ -1816,7 +1836,7 @@ def create_brain_connectivity_plot(
                 opacity=0.9,
                 line=dict(color=node_border_color, width=1)
             ),
-            text=node_labels,
+            text=display_labels,
             textposition='top center',
             textfont=dict(size=label_font_size, color='black', family='Arial'),
             hoverinfo='text',
@@ -2238,6 +2258,7 @@ def create_brain_connectivity_plot_with_modularity(
     border_width: int = 6,
     viz_type: str = 'all',
     inter_edge_color: Optional[str] = None,
+    show_node_labels: Union[bool, np.ndarray, pd.Series, List, str, None] = True,
 ) -> Tuple[go.Figure, Dict]:
     """
     Create brain connectivity visualization with modularity-based node coloring.
@@ -2644,7 +2665,14 @@ def create_brain_connectivity_plot_with_modularity(
         multi_view_panel_labels=multi_view_panel_labels,
         multi_view_keep_first_legend=multi_view_keep_first_legend,
         multi_view_zoom=multi_view_zoom,
+        show_node_labels=show_node_labels,
     )
+
+    # Resolve the show_node_labels mask once for the per-module trace
+    # rebuild below. The inner call already applied it to its (now
+    # discarded) traces; we resolve it again here so the rebuilt
+    # per-module Layer 2 traces honor the same visibility.
+    label_mask_full = resolve_show_node_labels(show_node_labels, n_nodes)
 
     # ------------------------------------------------------------------
     # Rebuild traces grouped by MODULE so the legend correctly toggles
@@ -3076,6 +3104,13 @@ def create_brain_connectivity_plot_with_modularity(
             node_y = [roi_coords_df.loc[i, 'cog_y'] for i in module_node_visible]
             node_z = [roi_coords_df.loc[i, 'cog_z'] for i in module_node_visible]
             node_labels = [roi_coords_df.loc[i, 'roi_name'] for i in module_node_visible]
+            # Apply the show_node_labels mask: blank out labels for nodes
+            # whose mask bit is 0. Hover text below stays unchanged so
+            # readers can still discover the ROI name on demand.
+            display_labels = [
+                lbl if label_mask_full[i] else ""
+                for i, lbl in zip(module_node_visible, node_labels)
+            ]
             # Resolve per-node sizes. Dynamic PC/Z-derived sizes win when
             # node_size_mode != 'fixed'; otherwise we fall back to whatever
             # `node_size` resolves to (scalar, vector CSV, etc.).
@@ -3141,7 +3176,7 @@ def create_brain_connectivity_plot_with_modularity(
                     opacity=0.9,
                     line=dict(color=node_border_color, width=1),
                 ),
-                text=node_labels,
+                text=display_labels,
                 textposition='top center',
                 textfont=dict(size=label_font_size, color='black', family='Arial'),
                 hoverinfo='text',
