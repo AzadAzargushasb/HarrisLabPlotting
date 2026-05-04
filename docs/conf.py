@@ -37,6 +37,7 @@ extensions = [
 # What to ignore when collecting sources
 exclude_patterns = [
     "_build",
+    "_pkg_root",            # autoapi-only scaffold (see autoapi setup below)
     "Thumbs.db",
     ".DS_Store",
     "**/.ipynb_checkpoints",
@@ -67,9 +68,48 @@ nb_merge_streams = True
 # -- Autoapi (Python API reference) -----------------------------------------
 
 autoapi_type = "python"
-# Absolute path so RTD's pattern matching can't be confused by ".." resolution.
-_PACKAGE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-autoapi_dirs = [_PACKAGE_ROOT]
+# autoapi infers the package name from the directory containing __init__.py.
+# This package uses a flat layout where __init__.py lives at the repo root,
+# so the parent dir's name ends up being whatever the checkout was cloned
+# into ("latest" on RTD) rather than "HarrisLabPlotting". Build a tiny
+# scaffold dir (docs/_pkg_root/HarrisLabPlotting) at conf-load time that
+# contains symlinks to the package's .py files, so autoapi sees them under
+# the correct package name regardless of the checkout's directory name.
+import shutil  # noqa: E402
+
+_HERE = os.path.abspath(os.path.dirname(__file__))
+_REPO_ROOT = os.path.abspath(os.path.join(_HERE, ".."))
+_PKG_SCAFFOLD = os.path.join(_HERE, "_pkg_root")
+_PKG_DIR = os.path.join(_PKG_SCAFFOLD, "HarrisLabPlotting")
+
+# Wipe and recreate the scaffold each build so renamed/removed source files
+# never leave stale entries behind.
+if os.path.exists(_PKG_SCAFFOLD):
+    shutil.rmtree(_PKG_SCAFFOLD)
+os.makedirs(_PKG_DIR, exist_ok=True)
+
+# Top-level .py files belonging to the package.
+_PACKAGE_FILES = [
+    "__init__.py",
+    "camera.py",
+    "combine.py",
+    "connectivity.py",
+    "loaders.py",
+    "mesh.py",
+    "modularity.py",
+    "roi_coordinates.py",
+    "utils.py",
+]
+for _name in _PACKAGE_FILES:
+    _src = os.path.join(_REPO_ROOT, _name)
+    _dst = os.path.join(_PKG_DIR, _name)
+    if os.path.exists(_src):
+        try:
+            os.symlink(_src, _dst)
+        except (OSError, NotImplementedError):
+            shutil.copy2(_src, _dst)
+
+autoapi_dirs = [_PKG_SCAFFOLD]
 autoapi_root = "reference/api"
 autoapi_keep_files = False
 autoapi_add_toctree_entry = False
@@ -83,21 +123,13 @@ autoapi_options = [
 ]
 autoapi_python_class_content = "both"
 autoapi_member_order = "groupwise"
-# Patterns are narrow on purpose: a broad `*/test_*` glob can swallow
-# package files in some autoapi versions. Stick to specific subdirs.
+# With the scaffold dir above, autoapi only scans the 9 explicit package
+# .py files — so we don't need broad ignore patterns to exclude cli/,
+# examples/, test_files/, build/, etc. Keep only the narrow ones that
+# still apply (the script-entrypoint and bytecode caches).
 autoapi_ignore = [
-    "*/cli/*",
     "*/__main__.py",
-    "*/tests/*",
-    "*/docs/*",
-    "*/examples/*",
-    "*/test_files/*",
-    "*/build/*",
-    "*/_build/*",
     "*/__pycache__/*",
-    "*/HarrisLabPlotting.egg-info/*",
-    "*/.git/*",
-    "*/_readthedocs/*",
 ]
 
 # -- Intersphinx --------------------------------------------------------------
