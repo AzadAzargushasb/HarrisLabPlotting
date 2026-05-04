@@ -67,10 +67,13 @@ nb_merge_streams = True
 # -- Autoapi (Python API reference) -----------------------------------------
 
 autoapi_type = "python"
-autoapi_dirs = [".."]
+# Absolute path so RTD's pattern matching can't be confused by ".." resolution.
+_PACKAGE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+autoapi_dirs = [_PACKAGE_ROOT]
 autoapi_root = "reference/api"
 autoapi_keep_files = False
 autoapi_add_toctree_entry = False
+autoapi_file_patterns = ["*.py"]
 autoapi_options = [
     "members",
     "undoc-members",
@@ -80,17 +83,21 @@ autoapi_options = [
 ]
 autoapi_python_class_content = "both"
 autoapi_member_order = "groupwise"
+# Patterns are narrow on purpose: a broad `*/test_*` glob can swallow
+# package files in some autoapi versions. Stick to specific subdirs.
 autoapi_ignore = [
     "*/cli/*",
     "*/__main__.py",
     "*/tests/*",
-    "*/test_*",
     "*/docs/*",
     "*/examples/*",
     "*/test_files/*",
     "*/build/*",
+    "*/_build/*",
     "*/__pycache__/*",
     "*/HarrisLabPlotting.egg-info/*",
+    "*/.git/*",
+    "*/_readthedocs/*",
 ]
 
 # -- Intersphinx --------------------------------------------------------------
