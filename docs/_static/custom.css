@@ -1,0 +1,39 @@
+/* HarrisLabPlotting docs - small style tweaks on top of Furo */
+
+/* Make interactive-plot tab content fit nicely */
+.interactive-plot iframe {
+    width: 100%;
+    border: 1px solid var(--color-background-border);
+    border-radius: 4px;
+    background: var(--color-background-secondary);
+}
+
+.interactive-plot img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+}
+
+.interactive-plot .plot-links {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.interactive-plot .plot-links a {
+    margin-right: 1rem;
+}
+
+.interactive-plot .plot-caption {
+    font-style: italic;
+    color: var(--color-foreground-muted);
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
+
+/* Slight tweak: copybutton placement */
+button.copybtn {
+    opacity: 0.4;
+}
+button.copybtn:hover {
+    opacity: 1;
+}

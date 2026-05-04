@@ -42,13 +42,24 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "black", "flake8", "mypy"]
 jupyter = ["jupyter", "jupyterlab"]
+docs = [
+    "sphinx>=7",
+    "furo",
+    "myst-parser>=2",
+    "myst-nb>=1",
+    "sphinx-autoapi>=3",
+    "sphinx-click>=5",
+    "sphinx-design",
+    "sphinx-copybutton",
+    "sphinx-togglebutton",
+]
 
 [project.scripts]
 hlplot = "HarrisLabPlotting.cli.main:cli"
 
 [project.urls]
 Homepage = "https://github.com/AzadAzargushasb/HarrisLabPlotting"
-Documentation = "https://github.com/AzadAzargushasb/HarrisLabPlotting/tree/main/tutorial"
+Documentation = "https://harrislabplotting.readthedocs.io"
 Repository = "https://github.com/AzadAzargushasb/HarrisLabPlotting"
 Issues = "https://github.com/AzadAzargushasb/HarrisLabPlotting/issues"
 

@@ -50,8 +50,17 @@ Thumbs.db
 *.html
 *.pkl
 
+# Allow committed interactive plots that ship with the docs site
+!docs/_static/plots/*.html
+
 # Test results (generated output)
 test_results/
 
 # Old/backup files
 _old_files/
+
+# Sphinx build output
+docs/_build/
+
+# Local agent / IDE config
+.claude/
