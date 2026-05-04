@@ -70,9 +70,15 @@ class InteractivePlot(SphinxDirective):
             )
             return [err]
 
-        # Resolve paths against _static/
-        html_url = f"_static/{html_rel}" if html_rel else ""
-        image_url = f"_static/{image_rel}" if image_rel else ""
+        # Resolve paths against _static/, prefixed with enough "../" segments
+        # to reach the docs root from the current page. Without this, embeds
+        # on any doc deeper than index.html resolve to <currentdir>/_static/...
+        # and 404. self.env.docname is e.g. "getting_started/quickstart" or
+        # "gallery/notebooks/quickstart"; its slash count is the depth.
+        depth = self.env.docname.count("/")
+        prefix = "../" * depth
+        html_url = f"{prefix}_static/{html_rel}" if html_rel else ""
+        image_url = f"{prefix}_static/{image_rel}" if image_rel else ""
 
         screenshot_active = (default != "interactive") and bool(image_url)
         interactive_active = not screenshot_active and bool(html_url)
