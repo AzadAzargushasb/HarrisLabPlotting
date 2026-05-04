@@ -104,10 +104,12 @@ for _name in _PACKAGE_FILES:
     _src = os.path.join(_REPO_ROOT, _name)
     _dst = os.path.join(_PKG_DIR, _name)
     if os.path.exists(_src):
-        try:
-            os.symlink(_src, _dst)
-        except (OSError, NotImplementedError):
-            shutil.copy2(_src, _dst)
+        # Use copies, not symlinks: sphinx-autoapi 3.4 on Read the Docs
+        # refuses to read symlinked sources whose realpath escapes
+        # autoapi_dirs, which silently empties the API reference. Copies
+        # are resolved as ordinary files. The cost is 9 small files (~200KB)
+        # at conf-load time.
+        shutil.copy2(_src, _dst)
 
 autoapi_dirs = [_PKG_SCAFFOLD]
 autoapi_root = "reference/api"
