@@ -98,7 +98,7 @@ Diagnostic: open the HTML, click "show coords on hover" — if the
 coordinates printed in the hover are in voxel ranges (e.g. 0–256) but the
 mesh extends from −80 to +80, you need to apply the NIfTI affine before
 exporting the coordinates. The `coordinate_function` in
-[`HarrisLabPlotting`](../reference/api/HarrisLabPlotting/index) handles this for you when
+[`HarrisLabPlotting`](../reference/api/index) handles this for you when
 you generate from NIfTI directly.
 
 ### Mesh looks chunky / faceted

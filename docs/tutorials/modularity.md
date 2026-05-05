@@ -97,7 +97,7 @@ fig, stats = create_brain_connectivity_plot_with_modularity(
 
 For the full enhanced pipeline — including PC/Z-score node roles and
 intra/inter/significant-only edge filtering — use
-[`create_enhanced_modularity_visualization`](../reference/api/HarrisLabPlotting/index).
+[`create_enhanced_modularity_visualization`](../reference/api/index).
 
 ## Where to go next
 

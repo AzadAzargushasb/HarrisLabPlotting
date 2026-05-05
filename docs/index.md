@@ -59,7 +59,7 @@ Every `hlplot` subcommand and flag, auto-generated from the Click app.
 :::
 
 :::{grid-item-card} 🐍 Python API
-:link: reference/api/HarrisLabPlotting/index
+:link: reference/api/index
 :link-type: doc
 Auto-generated reference for all public functions and classes.
 :::
@@ -148,7 +148,7 @@ gallery/notebooks
 :caption: Reference
 
 reference/cli
-reference/api/HarrisLabPlotting/index
+reference/api/index
 ```
 
 ```{toctree}

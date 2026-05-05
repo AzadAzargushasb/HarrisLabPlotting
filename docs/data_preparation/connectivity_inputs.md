@@ -13,7 +13,7 @@ six formats. Auto-detection is by file extension.
 | `.edge` | text | BrainNet Viewer format; whitespace-delimited square matrix |
 
 Internally everything routes through
-[`load_connectivity_input`](../reference/api/HarrisLabPlotting/index), which returns a
+[`load_connectivity_input`](../reference/api/index), which returns a
 square `numpy.ndarray`. NaNs are converted to zero so they don't trigger
 `Plotly` errors during edge rendering.
 

@@ -47,7 +47,6 @@ docs = [
     "furo",
     "myst-parser>=2,<4",
     "myst-nb>=1,<2",
-    "sphinx-autoapi>=3,<3.5",
     "sphinx-click>=5",
     "sphinx-design",
     "sphinx-copybutton",
