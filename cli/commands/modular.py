@@ -344,12 +344,27 @@ CAMERA_VIEWS = [
                   "FIRST panel of the stitched strip and strip it from the "
                   "rest. Default: enabled."
               ))
-@click.option("--multi-view-zoom", default=1.0, type=float,
+@click.option("--multi-view-grid", default=None, type=str,
               help=(
-                  "Camera zoom multiplier applied uniformly to every panel "
-                  "of the stitched strip. Values ABOVE 1.0 bring the camera "
+                  "Layout for --multi-view panels, given as 'rows,cols' "
+                  "(e.g. '2,3' for a 2-row by 3-column grid). When omitted "
+                  "(the default), every panel is placed in a single "
+                  "horizontal row (1xN) -- the original behavior, "
+                  "unchanged. Panels fill ROW-MAJOR (left-to-right, then "
+                  "top-to-bottom). If rows*cols exceeds the number of "
+                  "views, the trailing cells render as blank panels with "
+                  "the background color. If rows*cols is less than the "
+                  "number of views, the command errors out."
+              ))
+@click.option("--zoom", default=1.0, type=float,
+              help=(
+                  "Camera zoom multiplier applied to the rendered brain. "
+                  "Applies to BOTH the single-view export (HTML and any "
+                  "static PNG/SVG/PDF) AND every panel of a --multi-view "
+                  "stitched export. Values ABOVE 1.0 bring the camera "
                   "closer (brain looks bigger); values BELOW 1.0 push it "
-                  "further away. Default 1.0."
+                  "further away. Default 1.0 (no change). Replaces the "
+                  "old --multi-view-zoom flag, which has been removed."
               ))
 
 # === Node-role classification (PC + within-module Z-score) ===
@@ -441,7 +456,7 @@ def modular(mesh, coords, matrix, modules, output, title, q_score, z_score,
             edge_color_matrix, matrix_type, pvalue_threshold, sign_matrix,
             show_size_legend, show_width_legend, node_size_legend_metric,
             multi_view, custom_views, multi_view_panel_size,
-            multi_view_keep_first_legend, multi_view_zoom,
+            multi_view_keep_first_legend, multi_view_grid, zoom,
             node_roles, node_size_mode, base_node_size, max_node_multiplier,
             border_width, viz_type, inter_edge_color,
             show):
@@ -688,6 +703,29 @@ def modular(mesh, coords, matrix, modules, output, title, q_score, z_score,
             )
             raise click.Abort()
 
+        # Parse --multi-view-grid 'rows,cols'. None == 1xN row (default).
+        multi_view_grid_val = None
+        if multi_view_grid:
+            try:
+                grid_parts = [int(p.strip()) for p in multi_view_grid.split(',')]
+                if len(grid_parts) != 2 or grid_parts[0] < 1 or grid_parts[1] < 1:
+                    raise ValueError
+                multi_view_grid_val = (grid_parts[0], grid_parts[1])
+            except ValueError:
+                print_error(
+                    f"--multi-view-grid must be 'rows,cols' with both values >= 1 "
+                    f"(got {multi_view_grid!r})"
+                )
+                raise click.Abort()
+            n_views = len(multi_view_list) if multi_view_list else 0
+            if multi_view_grid_val[0] * multi_view_grid_val[1] < n_views:
+                print_error(
+                    f"--multi-view-grid {multi_view_grid_val} has only "
+                    f"{multi_view_grid_val[0] * multi_view_grid_val[1]} cells "
+                    f"but --multi-view supplied {n_views} views."
+                )
+                raise click.Abort()
+
         # Parse --custom-camera-* flags. The eye flag drives everything;
         # center/up/name only matter when eye is provided.
         custom_camera_dict = None
@@ -763,7 +801,8 @@ def modular(mesh, coords, matrix, modules, output, title, q_score, z_score,
             multi_view=multi_view_list,
             multi_view_panel_size=multi_view_panel_size_val,
             multi_view_keep_first_legend=multi_view_keep_first_legend,
-            multi_view_zoom=multi_view_zoom,
+            multi_view_grid=multi_view_grid_val,
+            zoom=zoom,
             node_roles=node_roles,
             node_size_mode=node_size_mode,
             base_node_size=base_node_size,

@@ -16,11 +16,14 @@ This tutorial covers two related features:
    width) where they would be pointless.
 
 2. **Multi-view stitched export** — render the same brain from N
-   camera angles and stitch the panels into a single 1×N PNG strip.
+   camera angles and stitch the panels into one PNG. By default the
+   panels go into a single horizontal row (1×N); pass
+   `multi_view_grid=(rows, cols)` (Python) or `--multi-view-grid
+   "R,C"` (CLI) to lay them out as a 2D grid (e.g. 2×3, 3×3) instead.
    The user can mix built-in presets (`left`, `superior`,
    `posterior`, …) with custom views (`eye` / `center` / `up`
    triples), name each panel, and keep the legend in the first panel
-   only so the strip stays clean.
+   only so the image stays clean.
 
 > **Heads up**: the node-size legend has two label modes. By default
 > the labels show the literal pixel sizes from your `--node-size`
@@ -513,7 +516,7 @@ fig, _ = create_brain_connectivity_plot(
     multi_view_panel_labels=['Left lateral', 'Tilted 3/4', 'Low anterior', 'Front'],
     export_image=str(mv_custom_path),
     image_dpi=600,
-    multi_view_zoom=1.2,
+    zoom=1.2,
 )
 ```
 
@@ -534,7 +537,7 @@ hlplot plot \
   --custom-view "low_anterior=0.0,1.8,0.3" \
   --multi-view "left,tilted,low_anterior,anterior" \
   --multi-view-panel-size "700,700" \
-  --multi-view-zoom 1.2 \
+  --zoom 1.2 \
   --image-dpi 600 \
   --title "Mixed: preset + custom + custom + preset" \
   --output tutorial/output_legend_views/mv_custom_dummy.html \
@@ -651,6 +654,109 @@ hlplot modular \
 ![Multi-view modularity plot with the legend stripped from every panel](../_static/images/legend_tutorial/10_mv_stripped.png)
 *With `multi_view_keep_first_legend=False`, no panel keeps the legend; the brains all occupy the same width.*
 
+### 4d. Grid layout (R×C instead of 1×N)
+
+By default `multi_view` stitches every panel into a single horizontal
+row (1×N). Pass `multi_view_grid=(rows, cols)` (Python) or
+`--multi-view-grid "R,C"` (CLI) to lay them out as a 2D grid instead.
+Panels fill **row-major** (left-to-right, then top-to-bottom). When
+`rows*cols > len(views)`, the trailing cells render as blank panels
+with the background color, so a 3×3 grid with 7 views leaves the last
+two cells empty. When `rows*cols < len(views)`, the call raises a
+`ValueError`.
+
+Six canonical brain views in a 2×3 grid:
+
+```python
+mv_grid_path = OUTPUT_DIR / 'multi_view_grid.png'
+fig, _ = create_brain_connectivity_plot(
+    vertices=vertices,
+    faces=faces,
+    roi_coords_df=coords_df,
+    connectivity_matrix=str(NODE_EDGE_28 / 'connectivity_28.edge'),
+    node_size=str(sizes_from_pc_path),
+    edge_width=(1.0, 8.0),
+    plot_title='Six views in a 2x3 grid',
+    save_path=str(OUTPUT_DIR / 'mv_grid_dummy.html'),
+    multi_view=['left', 'superior', 'right',
+                'anterior', 'inferior', 'posterior'],
+    multi_view_grid=(2, 3),
+    multi_view_panel_size=(700, 700),
+    image_dpi=180,
+    export_image=str(mv_grid_path),
+    zoom=1.2,
+)
+```
+
+#### CLI equivalent
+
+```bash
+hlplot plot \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
+  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
+  --node-size tutorial/output_legend_views/sizes_from_pc.csv \
+  --edge-width-min 1 --edge-width-max 8 \
+  --multi-view "left,superior,right,anterior,inferior,posterior" \
+  --multi-view-grid "2,3" \
+  --multi-view-panel-size "700,700" \
+  --image-dpi 180 \
+  --zoom 1.2 \
+  --title "Six views in a 2x3 grid" \
+  --output tutorial/output_legend_views/mv_grid_dummy.html \
+  --export-image tutorial/output_legend_views/multi_view_grid.png
+```
+
+![6-panel 2×3 grid of canonical brain views](../_static/images/legend_tutorial/12_mv_grid.png)
+*Six preset views stitched into a 2-row × 3-column grid. Panels fill row-major: top row is `left / superior / right`, bottom row is `anterior / inferior / posterior`. The legend stays in the top-left panel only (same rule as the 1×N case).*
+
+> **Tip:** Omit `multi_view_grid=` (or the `--multi-view-grid` flag)
+> to get the original single-row layout — the default is unchanged.
+
+#### Blank-padded grid (fewer views than cells)
+
+When the grid has more cells than `multi_view` has panels, the
+trailing cells are filled with the background color (no label). This
+is useful when you want a fixed grid shape across figures even if
+some configurations don't have a view for every cell:
+
+```python
+mv_pad_path = OUTPUT_DIR / 'multi_view_grid_padded.png'
+fig, _ = create_brain_connectivity_plot(
+    vertices=vertices,
+    faces=faces,
+    roi_coords_df=coords_df,
+    connectivity_matrix=str(NODE_EDGE_28 / 'connectivity_28.edge'),
+    node_size=str(sizes_from_pc_path),
+    edge_width=(1.0, 8.0),
+    plot_title='Four views in a 2x3 grid (last 2 cells blank)',
+    save_path=str(OUTPUT_DIR / 'mv_grid_padded_dummy.html'),
+    multi_view=['left', 'superior', 'right', 'anterior'],
+    multi_view_grid=(2, 3),
+    multi_view_panel_size=(700, 700),
+    image_dpi=180,
+    export_image=str(mv_pad_path),
+    zoom=1.2,
+)
+```
+
+```bash
+hlplot plot \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_28_test_comma.csv \
+  --matrix test_files/tutorial_files/node_edge_28/connectivity_28.edge \
+  --node-size tutorial/output_legend_views/sizes_from_pc.csv \
+  --edge-width-min 1 --edge-width-max 8 \
+  --multi-view "left,superior,right,anterior" \
+  --multi-view-grid "2,3" \
+  --multi-view-panel-size "700,700" \
+  --image-dpi 180 \
+  --zoom 1.2 \
+  --title "Four views in a 2x3 grid (last 2 cells blank)" \
+  --output tutorial/output_legend_views/mv_grid_padded_dummy.html \
+  --export-image tutorial/output_legend_views/multi_view_grid_padded.png
+```
+
 ---
 
 ## 5. Calling `export_multi_view_stitched_png` directly
@@ -699,6 +805,8 @@ helper_path = export_multi_view_stitched_png(
 | Width key in pvalue mode | yes | same as width key | labels are original p-values |
 | Multi-view stitched PNG | no (opt-in) | omit `multi_view` | reinterprets `export_image`, PNG-only |
 | Custom views in multi-view | yes (per-entry dict) | n/a | mix presets + dicts freely |
+| Multi-view grid layout | no (opt-in) | omit `multi_view_grid` / `--multi-view-grid` | default is 1×N row; pass `(rows, cols)` for an R×C grid |
+| Global zoom (single + multi) | no (opt-in) | `zoom=1.0` (default) | replaces the removed `multi_view_zoom`; applies to both single-view and multi-view |
 
 Both features render in the saved HTML AND in static exports (the
 keys are paper-coordinate plotly shapes, not JS overlays). They do

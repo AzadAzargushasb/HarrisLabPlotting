@@ -35,6 +35,25 @@ hlplot plot ... --enable-camera-controls
 This is gold for sharing interactive figures with collaborators who want to
 explore the network from multiple angles.
 
+> **Don't confuse with `--show-camera-readout`.** `--enable-camera-controls`
+> (default: **on**) toggles a static **dropdown of preset views** rendered in
+> the HTML. `--show-camera-readout` (default: **off**) is a separate feature
+> that injects a small **live JavaScript overlay** showing the current
+> `eye/center/up` coordinates as you rotate the brain, plus a copy-pastable
+> `--custom-camera-*` block. The two are independent: typing
+> `--enable-camera-controls` is a no-op (already on) — to remove the
+> dropdown use `--no-camera-controls`; to add the live readout overlay use
+> `--show-camera-readout`. The readout overlay never appears in static
+> PNG/SVG/PDF exports because kaleido does not run JavaScript.
+
+## Zoom
+
+Pass `--zoom 1.5` (or `zoom=1.5` from Python) to bring the camera 50% closer
+without picking a custom view. Values above `1.0` make the brain look bigger;
+below `1.0` push it further away. The flag applies to both the HTML and any
+static export, and to every panel of a `--multi-view` stitched output. (This
+replaces the old `--multi-view-zoom` flag, which has been removed.)
+
 ## Custom angles in Python
 
 For non-standard angles, use the `CameraController`:

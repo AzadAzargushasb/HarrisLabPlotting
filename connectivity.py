@@ -87,12 +87,15 @@ def export_multi_view_stitched_png(
     label_font_size: int = 18,
     title_font_size: int = 22,
     zoom: float = 1.0,
+    grid: Optional[Tuple[int, int]] = None,
     autocrop: bool = True,
     autocrop_padding_px: int = 8,
 ) -> Path:
     """
     Render ``fig`` from N camera angles and stitch them into a single
-    horizontal PNG strip (1 row x N columns).
+    PNG. By default the panels are laid out as a horizontal strip
+    (1 row x N columns); pass ``grid=(rows, cols)`` to stitch them into
+    a 2D grid instead.
 
     The stitched output is built by:
 
@@ -158,6 +161,15 @@ def export_multi_view_stitched_png(
         values BELOW 1.0 push it further away. Default ``1.0`` (no
         change). Use ``zoom=1.5`` to make the brain about 50% bigger
         in each panel without changing the panel pixel size.
+    grid : tuple of (int, int), optional
+        Layout of the stitched panels as ``(rows, cols)``. When ``None``
+        (the default) every panel is placed in a single horizontal row
+        (``1 x len(views)``) -- the original behavior. When a tuple is
+        supplied the panels fill ROW-MAJOR (left-to-right, then
+        top-to-bottom). If ``rows * cols`` is greater than
+        ``len(views)`` the trailing cells are rendered as blank panels
+        with the background color (no label). If ``rows * cols`` is
+        less than ``len(views)`` a ``ValueError`` is raised.
     autocrop : bool
         Trim the white border around each panel before stitching, so
         the panels sit tightly next to each other with no wasted
@@ -228,6 +240,28 @@ def export_multi_view_stitched_png(
             f"`panel_labels` length ({len(panel_labels)}) does not match "
             f"`views` length ({len(resolved_views)})"
         )
+
+    # Resolve the grid shape. None == single row (back-compat default).
+    if grid is None:
+        n_rows, n_cols = 1, len(resolved_views)
+    else:
+        try:
+            n_rows, n_cols = int(grid[0]), int(grid[1])
+        except (TypeError, ValueError, IndexError) as e:
+            raise ValueError(
+                f"`grid` must be a (rows, cols) pair of positive integers; "
+                f"got {grid!r}"
+            ) from e
+        if n_rows < 1 or n_cols < 1:
+            raise ValueError(
+                f"`grid` rows and cols must both be >= 1; got {grid!r}"
+            )
+        if n_rows * n_cols < len(resolved_views):
+            raise ValueError(
+                f"grid={grid!r} has only {n_rows * n_cols} cells but "
+                f"{len(resolved_views)} views were given. Increase the grid "
+                f"or remove some views."
+            )
 
     # Compute the scale factor used by kaleido for DPI. Cap at 8.0
     # (effective ~576 DPI) -- enough for most publication needs while
@@ -348,10 +382,13 @@ def export_multi_view_stitched_png(
             uniform_panels = loaded_panels
 
         # Reserved vertical space for combined title and per-panel labels.
+        # Each row reserves a label band underneath its panels, so a
+        # multi-row grid stacks (panel + label) units vertically.
         title_h = int((title_font_size * 2.5) * scale) if title else 0
         label_h = int((label_font_size * 2.0) * scale)
-        strip_w = pwidth_px * len(uniform_panels)
-        strip_h = title_h + pheight_px + label_h
+        row_h = pheight_px + label_h
+        strip_w = pwidth_px * n_cols
+        strip_h = title_h + row_h * n_rows
 
         # Stitch with Pillow.
         strip = Image.new('RGB', (strip_w, strip_h), bg_color)
@@ -387,11 +424,16 @@ def export_multi_view_stitched_png(
                 font=title_font,
             )
 
-        # Paste the (autocropped + uniformly padded) panels into the strip
-        # and draw the per-panel labels below each one.
+        # Paste the (autocropped + uniformly padded) panels into the
+        # strip and draw the per-panel labels below each one. Cells fill
+        # row-major; any cell index >= len(uniform_panels) is left as
+        # background (only happens when grid was given and rows*cols
+        # exceeds the number of views).
         for i, img in enumerate(uniform_panels):
-            x_offset = i * pwidth_px
-            strip.paste(img, (x_offset, title_h))
+            row, col = divmod(i, n_cols)
+            x_offset = col * pwidth_px
+            y_offset = title_h + row * row_h
+            strip.paste(img, (x_offset, y_offset))
 
             label = panel_labels[i]
             if label:
@@ -401,7 +443,7 @@ def export_multi_view_stitched_png(
                 except AttributeError:
                     lw, lh = draw.textsize(label, font=label_font)
                 lx = x_offset + (pwidth_px - lw) / 2
-                ly = title_h + pheight_px + (label_h - lh) / 2
+                ly = y_offset + pheight_px + (label_h - lh) / 2
                 draw.text((lx, ly), label, fill='black', font=label_font)
 
         output_path = Path(output_path)
@@ -875,7 +917,8 @@ def _export_figure_static(
     multi_view_panel_size=(800, 800),
     multi_view_panel_labels=None,
     multi_view_keep_first_legend=True,
-    multi_view_zoom=1.0,
+    multi_view_grid=None,
+    zoom=1.0,
     image_dpi=300,
     image_format='png',
     plot_title='',
@@ -885,8 +928,9 @@ def _export_figure_static(
     """Render ``fig`` to a static image file.
 
     When ``multi_view`` is set, ``export_image`` is reinterpreted as the
-    path of a stitched 1xN PNG produced by
-    :func:`export_multi_view_stitched_png`. Otherwise the figure is
+    path of a stitched PNG produced by
+    :func:`export_multi_view_stitched_png` (1xN row by default, or an
+    R x C grid if ``multi_view_grid`` is set). Otherwise the figure is
     exported as a single PNG/SVG/PDF/JPEG/WEBP via kaleido.
 
     Used by both ``create_brain_connectivity_plot`` and
@@ -923,7 +967,8 @@ def _export_figure_static(
             panel_labels=multi_view_panel_labels,
             keep_first_legend=multi_view_keep_first_legend
                               and export_show_legend,
-            zoom=multi_view_zoom,
+            zoom=zoom,
+            grid=multi_view_grid,
         )
         print(f"Wrote stitched multi-view PNG to: {stitched_path}")
         return
@@ -1065,7 +1110,8 @@ def create_brain_connectivity_plot(
     multi_view_panel_size: Tuple[int, int] = (800, 800),
     multi_view_panel_labels: Optional[List[str]] = None,
     multi_view_keep_first_legend: bool = True,
-    multi_view_zoom: float = 1.0,
+    multi_view_grid: Optional[Tuple[int, int]] = None,
+    zoom: float = 1.0,
     show_node_labels: Union[bool, np.ndarray, pd.Series, List, str, None] = True,
 ):
     """
@@ -1303,9 +1349,12 @@ def create_brain_connectivity_plot(
         PC) into pixel sizes and want the key to show the metric
         values, not the pixel sizes.
     multi_view : list of (str | dict), optional
-        When set, ALSO render a stitched 1xN PNG strip of the brain
-        from each of the requested views, in addition to the normal
-        single HTML/static export. Each entry is either:
+        When set, ALSO render a stitched PNG of the brain from each of
+        the requested views, in addition to the normal single
+        HTML/static export. By default the panels are stitched into a
+        single horizontal row (``1 x len(multi_view)``); pass
+        ``multi_view_grid=(rows, cols)`` to stitch them into a 2D grid
+        instead. Each entry is either:
 
         - the name of a built-in preset (``'left'``, ``'superior'``,
           ``'anterior'``, ``'right'``, ``'posterior'``, ``'inferior'``,
@@ -1323,27 +1372,37 @@ def create_brain_connectivity_plot(
     multi_view_panel_size : tuple of (int, int), optional
         Pixel size of EACH individual panel before the DPI scale factor
         is applied. Default ``(800, 800)``. The final stitched image is
-        ``len(multi_view) * panel_width`` wide by ``panel_height + label
-        rows + title row`` tall.
+        ``cols * panel_width`` wide by
+        ``rows * (panel_height + label band) + title band`` tall.
     multi_view_panel_labels : list of str, optional
         Per-panel labels drawn below each panel in the stitched image.
         Length must equal ``len(multi_view)``. When ``None``, sensible
         defaults are pulled from each view (preset name -> capitalized
         form, custom dict -> ``view['name']`` if present).
     multi_view_keep_first_legend : bool, optional
-        When ``True`` (default), the first panel of the stitched strip
+        When ``True`` (default), the first panel of the stitched image
         keeps its plotly legend (positive/negative edges, modules, ...)
         and the remaining panels are rendered without it. The first
         panel will look slightly different from the others (the legend
         eats some left-side space). Set to ``False`` to strip the
         legend from every panel for a clean visual repeat.
-    multi_view_zoom : float, optional
-        Camera zoom multiplier applied uniformly to every panel of the
-        stitched strip. Values ABOVE ``1.0`` bring the camera closer
-        and make the brain look bigger; values BELOW ``1.0`` push it
-        further away. Default ``1.0`` (no change). Examples:
-        ``multi_view_zoom=1.5`` makes the brain about 50% bigger;
-        ``multi_view_zoom=2.0`` doubles its apparent size.
+    multi_view_grid : tuple of (int, int), optional
+        Layout of the stitched panels as ``(rows, cols)``. When ``None``
+        (the default) every panel is placed in a single horizontal row
+        (``1 x len(multi_view)``) -- the original behavior. When
+        provided, the panels fill row-major (left-to-right, then
+        top-to-bottom). If ``rows * cols > len(multi_view)`` the
+        trailing cells render as blank panels with the background
+        color; if ``rows * cols < len(multi_view)`` a ``ValueError``
+        is raised.
+    zoom : float, optional
+        Camera zoom multiplier applied uniformly to the rendered brain
+        in BOTH the single-view HTML/static export AND every panel of
+        the multi-view stitched export. Values ABOVE ``1.0`` bring the
+        camera closer and make the brain look bigger; values BELOW
+        ``1.0`` push it further away. Default ``1.0`` (no change).
+        Examples: ``zoom=1.5`` makes the brain about 50% bigger;
+        ``zoom=2.0`` doubles its apparent size.
 
     Returns
     -------
@@ -1856,6 +1915,19 @@ def create_brain_connectivity_plot(
     else:
         camera = CameraController.get_camera_position(camera_view)
 
+    # Apply the global zoom multiplier to the camera eye. zoom>1
+    # ⇒ camera closer ⇒ brain looks bigger. The same convention is
+    # re-applied per-panel inside export_multi_view_stitched_png; for
+    # the single-view path this scaling reaches both the saved HTML and
+    # any kaleido static export, since both inherit fig.scene.camera.
+    if zoom and zoom != 1.0:
+        eye_scale = 1.0 / float(zoom)
+        camera['eye'] = {
+            'x': float(camera['eye']['x']) * eye_scale,
+            'y': float(camera['eye']['y']) * eye_scale,
+            'z': float(camera['eye']['z']) * eye_scale,
+        }
+
     # Add camera view to title
     if 'name' in camera:
         full_title = f"{plot_title}<br><i>View: {camera['name']}</i>"
@@ -2123,7 +2195,8 @@ def create_brain_connectivity_plot(
         multi_view_panel_size=multi_view_panel_size,
         multi_view_panel_labels=multi_view_panel_labels,
         multi_view_keep_first_legend=multi_view_keep_first_legend,
-        multi_view_zoom=multi_view_zoom,
+        multi_view_grid=multi_view_grid,
+        zoom=zoom,
         image_dpi=image_dpi,
         image_format=image_format,
         plot_title=plot_title,
@@ -2250,7 +2323,8 @@ def create_brain_connectivity_plot_with_modularity(
     multi_view_panel_size: Tuple[int, int] = (800, 800),
     multi_view_panel_labels: Optional[List[str]] = None,
     multi_view_keep_first_legend: bool = True,
-    multi_view_zoom: float = 1.0,
+    multi_view_grid: Optional[Tuple[int, int]] = None,
+    zoom: float = 1.0,
     node_roles: bool = False,
     node_size_mode: str = 'fixed',
     base_node_size: Optional[int] = None,
@@ -2397,21 +2471,30 @@ def create_brain_connectivity_plot_with_modularity(
         node-size key (instead of the literal pixel sizes). Forwarded to
         ``create_brain_connectivity_plot``.
     multi_view : list of (str | dict), optional
-        Render a stitched 1xN PNG strip of the brain from multiple
-        camera angles. Forwarded to ``create_brain_connectivity_plot``.
+        Render a stitched PNG of the brain from multiple camera angles.
+        Forwarded to ``create_brain_connectivity_plot``. By default the
+        panels are stitched into a single horizontal row; pass
+        ``multi_view_grid=(rows, cols)`` for an R x C grid.
         ``export_image`` is reinterpreted as the stitched output path.
     multi_view_panel_size : tuple of (int, int), optional
         Pixel size of each panel before DPI scaling. Default
         ``(800, 800)``.
     multi_view_panel_labels : list of str, optional
-        Per-panel labels drawn under each panel of the stitched strip.
+        Per-panel labels drawn under each panel of the stitched image.
     multi_view_keep_first_legend : bool, optional
         When ``True`` (default), the first panel keeps its plotly legend
         and the rest are rendered without one.
-    multi_view_zoom : float, optional
-        Camera zoom multiplier applied uniformly to every panel of the
-        stitched strip. ``1.0`` (default) = no change. Higher values
-        bring the camera closer (brain looks bigger).
+    multi_view_grid : tuple of (int, int), optional
+        Layout of the stitched panels as ``(rows, cols)``. ``None``
+        (default) produces the original single-row strip; a tuple
+        produces an R x C grid filled row-major (blank-padded if
+        ``rows*cols > len(multi_view)``; ``ValueError`` if
+        ``rows*cols < len(multi_view)``).
+    zoom : float, optional
+        Global camera zoom multiplier applied to BOTH the single-view
+        HTML/static export AND every panel of the multi-view stitched
+        export. ``1.0`` (default) = no change. Higher values bring the
+        camera closer (brain looks bigger).
     node_roles : bool, optional
         When ``True``, classify each node by its participation
         coefficient and within-module Z-score using the cartographic
@@ -2664,7 +2747,8 @@ def create_brain_connectivity_plot_with_modularity(
         multi_view_panel_size=multi_view_panel_size,
         multi_view_panel_labels=multi_view_panel_labels,
         multi_view_keep_first_legend=multi_view_keep_first_legend,
-        multi_view_zoom=multi_view_zoom,
+        multi_view_grid=multi_view_grid,
+        zoom=zoom,
         show_node_labels=show_node_labels,
     )
 
@@ -3294,7 +3378,8 @@ def create_brain_connectivity_plot_with_modularity(
         multi_view_panel_size=multi_view_panel_size,
         multi_view_panel_labels=multi_view_panel_labels,
         multi_view_keep_first_legend=multi_view_keep_first_legend,
-        multi_view_zoom=multi_view_zoom,
+        multi_view_grid=multi_view_grid,
+        zoom=zoom,
         image_dpi=image_dpi,
         image_format=image_format,
         plot_title=full_title,
