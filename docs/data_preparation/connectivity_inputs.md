@@ -48,13 +48,39 @@ small p-values render as thick edges. See
 ## BrainNet Viewer node/edge files
 
 If you're coming from BrainNet Viewer and have separate `.node` (8-column)
-and `.edge` (matrix) files, convert them in one shot:
+and `.edge` (matrix) files, `hlplot utils convert-node-edge` *embeds* the
+small `n_nodes × n_nodes` edge matrix into the larger `N × N` matrix
+defined by a coordinates CSV (`--coords`). Edge values are placed by
+matching ROI names; everything else is zero. The output lines up
+row-for-row with the coords CSV, so it drops straight into
+`hlplot plot --matrix`.
 
 ```bash
+# 28-ROI subset embedded into the 170-ROI atlas (-> 170 x 170 matrix)
 hlplot utils convert-node-edge \
   --node rois_28.node \
   --edge connectivity_28.edge \
-  --output combined.npy
+  --coords atlas_170_coordinates.csv \
+  --output connectivity_28_in_170.csv
+```
+
+The coords CSV can be **any atlas size** — 114, 170, or your own custom
+list — as long as:
+
+- it has **≥ as many rows** as the `.node` file (and the `.edge` matrix
+  row length),
+- every ROI name listed in the `.node` file appears in the coords CSV's
+  `roi_name` column.
+
+If a name is missing, the command aborts with the unmatched names listed.
+
+```bash
+# Same .node/.edge embedded into a 114-ROI subset atlas (-> 114 x 114 matrix)
+hlplot utils convert-node-edge \
+  --node rois_28.node \
+  --edge connectivity_28.edge \
+  --coords atlas_114_coordinates.csv \
+  --output connectivity_28_in_114.csv
 ```
 
 To combine multiple condition-specific files into a single block-diagonal

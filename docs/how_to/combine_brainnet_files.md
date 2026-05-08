@@ -59,7 +59,9 @@ edge_path, node_path = combine_node_edge_folder(
 
 ## See also
 
-- Convert the combined files to a single `.npy` for `hlplot plot`:
-  `hlplot utils convert-node-edge --node total.node --edge total.edge --output combined.npy`
+- Embed the combined files into a full ROI atlas matrix for `hlplot plot`
+  (the `--coords` CSV must contain every ROI listed in `total.node` and
+  have at least as many rows; output is sized to the coords CSV):
+  `hlplot utils convert-node-edge --node total.node --edge total.edge --coords full_atlas_coordinates.csv --output combined.npy`
 - The BrainNet Viewer file format itself:
   [Connectivity matrix inputs](../data_preparation/connectivity_inputs.md#brainnet-viewer-nodeedge-files)

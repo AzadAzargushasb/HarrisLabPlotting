@@ -326,6 +326,74 @@ hlplot coords load \
   --validate
 ```
 
+### 6f. Map a node/edge subset into a full ROI matrix
+
+`hlplot utils convert-node-edge` embeds a small BrainNet Viewer
+`.node` + `.edge` pair into the larger `N × N` matrix defined by a
+coordinates CSV (`--coords`). Edge values are placed by matching ROI
+names; every unmatched row/column stays zero. The output lines up
+row-for-row with the coords CSV, so it can be passed directly to
+`hlplot plot --matrix` alongside the same coords CSV.
+
+The `--coords` reference can be **any atlas size** — 114, 170, or a
+custom list you generated yourself — as long as:
+
+| Constraint | Failure mode |
+|---|---|
+| `len(coords) ≥ len(node)` (coords has ≥ as many ROIs as the node file) | `Coords CSV has X ROIs but .node file has Y` |
+| `edge.shape == (len(node), len(node))` | `Edge matrix has X rows but .node file has Y entries` |
+| Every `roi_name` in the `.node` file appears in `coords`' `roi_name` column | `The following ROI names from the node file were not found in the ROI reference: [...]` |
+
+#### Copy-Paste Command
+
+```bash
+hlplot utils convert-node-edge \
+  --node node_edge_28/rois_28.node \
+  --edge node_edge_28/connectivity_28.edge \
+  --coords atlas_170_coordinates.csv \
+  --output output/connectivity_28_in_170.csv
+```
+
+#### Expected Output
+
+```
+[OK] Loaded 28 nodes
+[OK] Loaded (28, 28) edge matrix
+[OK] Loaded 170 reference ROIs
+[OK] Mapped 28 nodes into (170, 170) matrix
+[OK] Saved (170, 170) matrix to output/connectivity_28_in_170.csv
+```
+
+The resulting `(170, 170)` matrix has 54 non-zero entries (the original
+28×28 connections, placed at the rows/cols matching `atlas_170_coordinates.csv`).
+You can plot it directly:
+
+```bash
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords atlas_170_coordinates.csv \
+  --matrix output/connectivity_28_in_170.csv \
+  --output output/test_28_in_170.html \
+  --camera superior
+```
+
+#### Flag Explanations
+
+| Flag | Short | Required | Description |
+|------|-------|----------|-------------|
+| `--node` | `-n` | Yes | BrainNet Viewer node file (`.node`, 8-column) |
+| `--edge` | `-e` | Yes | BrainNet Viewer edge file (`.edge`, square matrix) |
+| `--coords` | `-c` | Yes | Full ROI coordinates CSV with a `roi_name` column |
+| `--output` | `-o` | Yes | Output matrix path (`.csv` or `.npy`) |
+
+#### Note: name-overlap is required
+
+The bundled 28-ROI file contains four ROIs (`S1_left`, `GIDI_right`,
+`V1B_right`, `V1M_right`) that aren't present in `atlas_114_coordinates.csv`,
+so attempting `--coords atlas_114_coordinates.csv` here will abort with
+the missing names printed. To embed into a smaller atlas, make sure
+every ROI in your `.node` file appears in that atlas first.
+
 ---
 
 ## 7. Fixed Edge Width

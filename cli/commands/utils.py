@@ -158,20 +158,43 @@ def threshold_cmd(matrix, output, top_n, percentile, absolute, keep_sign):
               help="Input node file (.node format).")
 @click.option("--edge", "-e", required=True, type=click.Path(exists=True),
               help="Input edge file (.edge format).")
+@click.option("--coords", "-c", required=True, type=click.Path(exists=True),
+              help="Full ROI coordinates CSV (any atlas size - 114, 170, custom - "
+                   "from `hlplot coords generate` or `coords map-subset`). MUST have "
+                   "at least as many rows as the .node file (and edge-matrix row "
+                   "length), and MUST contain every ROI name from the .node file. "
+                   "The output matrix is sized to this CSV's row count; .edge values "
+                   "are placed by matching ROI names. Unmatched rows/cols are zero.")
 @click.option("--output", "-o", required=True, type=click.Path(),
               help="Output matrix file (.npy or .csv).")
-def convert_node_edge(node, edge, output):
+def convert_node_edge(node, edge, coords, output):
     """
-    Convert node/edge files to a connectivity matrix.
+    Embed a BrainNet Viewer (.node, .edge) pair into a full ROI atlas matrix.
 
-    Converts BrainNet Viewer format (.node, .edge) to numpy array.
+    The .edge file is an n_nodes x n_nodes connectivity matrix between the
+    ROIs listed in the .node file. This command embeds it into the larger
+    N x N matrix defined by --coords (matched by ROI name), filling unmapped
+    rows/columns with zeros. The resulting matrix lines up row-for-row with
+    the coords CSV, so it can be passed straight to `hlplot plot --matrix`.
+
+    \b
+    Constraints:
+      * len(coords) >= len(node)
+      * edge.shape == (len(node), len(node))
+      * Every roi_name in the .node file must appear in coords' roi_name column
 
     \b
     Examples:
-      hlplot utils convert-node-edge --node data.node --edge data.edge --output matrix.npy
+      # Embed a 28-ROI subset into a 170-ROI atlas
+      hlplot utils convert-node-edge \\
+          --node rois_28.node \\
+          --edge connectivity_28.edge \\
+          --coords atlas_170_coordinates.csv \\
+          --output connectivity_28_in_170.csv
     """
     try:
         from HarrisLabPlotting import load_node_file, load_edge_file, node_edge_to_roi_matrix
+        import pandas as pd
 
         print_info(f"Loading node file from {node}...")
         node_data = load_node_file(node)
@@ -180,15 +203,47 @@ def convert_node_edge(node, edge, output):
 
         print_info(f"Loading edge file from {edge}...")
         edge_data = load_edge_file(edge)
-        print_success(f"Loaded edge data")
+        print_success(f"Loaded {edge_data.shape} edge matrix")
 
-        print_info("Converting to matrix format...")
-        matrix = node_edge_to_roi_matrix(node_data, edge_data, n_nodes)
+        # Pre-checks: surface clear errors before delegating to the mapper.
+        if edge_data.ndim != 2 or edge_data.shape[0] != edge_data.shape[1]:
+            raise ValueError(
+                f"Edge matrix is not square: shape={edge_data.shape}."
+            )
+        if edge_data.shape[0] != n_nodes:
+            raise ValueError(
+                f"Edge matrix has {edge_data.shape[0]} rows but .node file has "
+                f"{n_nodes} entries - they must match."
+            )
+
+        print_info(f"Loading coords reference from {coords}...")
+        with open(coords, 'r') as f:
+            first_line = f.readline()
+        delimiter = '\t' if '\t' in first_line else ','
+        coords_df = pd.read_csv(coords, sep=delimiter)
+
+        if 'roi_name' not in coords_df.columns:
+            raise ValueError(
+                f"Coords CSV is missing the required 'roi_name' column. "
+                f"Found columns: {list(coords_df.columns)}"
+            )
+        if len(coords_df) < n_nodes:
+            raise ValueError(
+                f"Coords CSV has {len(coords_df)} ROIs but .node file has "
+                f"{n_nodes}. --coords must reference at least as many ROIs as "
+                f"the node file."
+            )
+        print_success(f"Loaded {len(coords_df)} reference ROIs")
+
+        print_info("Embedding edge matrix into reference atlas...")
+        matrix, roi_names, node_indices = node_edge_to_roi_matrix(node, edge, coords)
+        print_success(
+            f"Mapped {len(node_indices)} nodes into {matrix.shape} matrix"
+        )
 
         # Save
         output_path = Path(output)
         if output_path.suffix.lower() == '.csv':
-            import pandas as pd
             pd.DataFrame(matrix).to_csv(output, index=False, header=False)
         else:
             import numpy as np
