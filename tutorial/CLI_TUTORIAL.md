@@ -115,6 +115,8 @@ The label file must be tab-delimited with format `index\tname`:
 
 When your connectivity matrix has fewer ROIs than your full atlas, use `hlplot coords map-subset` to extract matching coordinates.
 
+`map-subset` finds each region's display coordinates by **matching ROI names**: every name in your subset file (`.node`, `.txt`, or `.csv`) must exactly match a `roi_name` in the `--coords` atlas. Any name that isn't found in both files is reported as unmatched and dropped.
+
 ### Understanding `map` vs `map-subset`
 
 | Command | Purpose |
@@ -124,7 +126,7 @@ When your connectivity matrix has fewer ROIs than your full atlas, use `hlplot c
 
 ### Example A: Map 170 → 28 ROIs (using .node file)
 
-The 28-ROI node file contains ROI names that exist in the 170-ROI atlas.
+The 28-ROI node file **must** contain ROI names that **also exist in** the 170-ROI atlas — `map-subset` matches by name to look up each region's coordinates.
 
 ```bash
 hlplot coords map-subset \
@@ -136,7 +138,7 @@ hlplot coords map-subset \
 
 ### Example B: Map 170 → 114 ROIs (using .txt label file)
 
-The 114-ROI label file contains a subset of the 170 ROI names (with some tracts removed).
+The 114-ROI label file **must** list ROI names that **also exist in** the 170-ROI atlas (it's a subset of them, with some tracts removed); the names are matched the same way.
 
 ```bash
 hlplot coords map-subset \
@@ -657,6 +659,20 @@ hlplot modular \
 
 **Output title:** "Brain Network Modularity (Q=0.452, Z=3.21)"
 
+> **About `--q-score` / `--z-score`:** these are display-only values
+> printed in the title — `hlplot` does **not** compute them. You obtain
+> them from your community-detection / modularity routine (for example
+> **netneurotools**' modularity functions, which return the modularity
+> quality **Q** and a partition-stability **z-rand** score) and pass the
+> resulting scalars in. Because they describe the partition as a whole,
+> they belong in the title rather than on any single node or edge.
+>
+> This is the only thing that sets §12a apart from the variants below:
+> §12a adds Q/Z to the title (with the default sign-based edge
+> coloring), while §12b and §12c instead demonstrate the two
+> **edge-color modes** (`--edge-color-mode module` vs `sign`) and don't
+> pass Q/Z.
+
 ### 12b. Module-Colored Edges
 
 Edges colored by source node's module instead of positive/negative sign:
@@ -795,7 +811,8 @@ hlplot plot \
 
 ![28-ROI network with every ROI labelled (default)](../docs/images/cli_tutorial/14a_labels_default.png)
 *Default `--show-node-labels true`: 28 ROI labels render at once. Useful
-for exploration, dense at publication scale.*
+for quick exploration, but with many nodes the labels overlap and crowd
+the figure, making it hard to read at publication scale.*
 
 ### 14b. All labels off
 
@@ -894,28 +911,57 @@ Other useful patterns:
 
 The same parameter is available directly on the Python plotting
 functions and accepts `True`, `False`, a numpy array / list / pandas
-Series of 0/1, or a CSV path:
+Series of 0/1, or a CSV path.
+
+**How to run these examples.** The snippet below is **Python**, not a
+shell command — paste it into a Jupyter notebook cell, or save it to a
+`.py` file and run `python my_script.py`. It assumes your working
+directory is `test_files/tutorial_files` (the same directory the CLI
+commands above run from) so the relative paths resolve. To run it
+straight from a terminal without saving a file, hand it to the
+interpreter with `python -c '...'`: `python -c` tells Python to execute
+the string as code (the shell can't run Python on its own), and the
+**single** outer quotes keep the snippet's double-quoted paths intact.
+
+```bash
+python -c '
+import pandas as pd
+from HarrisLabPlotting import load_mesh_file, create_brain_connectivity_plot
+vertices, faces = load_mesh_file("brain_mesh.gii")
+coords = pd.read_csv("output/atlas_28_test_comma.csv")
+create_brain_connectivity_plot(
+    vertices=vertices, faces=faces, roi_coords_df=coords,
+    connectivity_matrix="node_edge_28/connectivity_28.edge",
+    show_node_labels="node_edge_28/show_labels_hubs_28.csv",
+    save_path="output/labels_hubs.html")
+'
+```
+
+The full Jupyter / `.py` version, showing both label-mask forms:
 
 ```python
+import numpy as np
+import pandas as pd
 from HarrisLabPlotting import (
     load_mesh_file,
     create_brain_connectivity_plot,
     create_brain_connectivity_plot_with_modularity,
 )
 
+# Run from test_files/tutorial_files so these relative paths resolve.
 vertices, faces = load_mesh_file("brain_mesh.gii")
 coords = pd.read_csv("output/atlas_28_test_comma.csv")
 
-# Labels only on the hub ROIs (path)
+# Labels only on the hub ROIs (CSV mask path)
 fig, _ = create_brain_connectivity_plot(
     vertices=vertices, faces=faces, roi_coords_df=coords,
     connectivity_matrix="node_edge_28/connectivity_28.edge",
     show_node_labels="node_edge_28/show_labels_hubs_28.csv",
     save_path="output/labels_hubs.html",
 )
+fig.show()  # in a Jupyter notebook this renders the figure inline
 
 # Equivalent with an explicit boolean array
-import numpy as np
 mask = np.zeros(28, dtype=bool)
 mask[[1, 7, 16, 17, 18, 24]] = True  # the same six indices
 
@@ -926,6 +972,7 @@ fig, _ = create_brain_connectivity_plot_with_modularity(
     show_node_labels=mask,
     save_path="output/labels_hubs_modular.html",
 )
+fig.show()
 ```
 
 > **Note:** `show_node_labels` only affects the *persistent* text

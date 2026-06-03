@@ -1934,17 +1934,6 @@ def create_brain_connectivity_plot(
     else:
         full_title = plot_title
 
-    # Camera control instructions
-    camera_control_text = ""
-    if enable_camera_controls:
-        camera_control_text = (
-            "<b>Camera Controls:</b><br>"
-            "* Drag to rotate<br>"
-            "* Scroll to zoom<br>"
-            "* Right-click drag to pan<br>"
-            "* Double-click to reset"
-        )
-
     # Build camera preset buttons if enabled
     updatemenus = []
     active_button_idx = 0  # Default to first button
@@ -2057,19 +2046,6 @@ def create_brain_connectivity_plot(
         ),
         updatemenus=updatemenus,
         annotations=[
-            dict(
-                text=camera_control_text,
-                showarrow=False,
-                xref="paper", yref="paper",
-                x=0.01, y=0.50,
-                xanchor="left",
-                yanchor="top",
-                font=dict(size=10),
-                bgcolor='rgba(255,255,255,0.9)' if camera_control_text else 'rgba(255,255,255,0)',
-                bordercolor='black' if camera_control_text else 'rgba(0,0,0,0)',
-                borderwidth=1 if camera_control_text else 0,
-                borderpad=4
-            ),
             dict(
                 text=f"V2: Camera controls enabled" if enable_camera_controls else "",
                 showarrow=False,

@@ -7,9 +7,10 @@ from pathlib import Path
 
 from ..console import console, print_success, print_error, print_warning, print_info, print_config_summary
 from ..config_loader import load_config, validate_config, create_example_config, ConfigError
+from ..pager import PagerGroup
 
 
-@click.group()
+@click.group(cls=PagerGroup)
 def config():
     """
     Configuration file management.

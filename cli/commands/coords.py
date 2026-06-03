@@ -6,9 +6,10 @@ import click
 from pathlib import Path
 
 from ..console import console, print_success, print_error, print_warning, print_info, create_stats_table
+from ..pager import PagerGroup
 
 
-@click.group()
+@click.group(cls=PagerGroup)
 def coords():
     """
     ROI coordinate utilities.
