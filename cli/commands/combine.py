@@ -6,6 +6,7 @@ import click
 from pathlib import Path
 
 from ..console import console, print_success, print_error, print_info
+from ..pager import PagerGroup
 
 
 def _resolve_sort_mode(alphabetical: bool, size: bool) -> str:
@@ -18,7 +19,7 @@ def _resolve_sort_mode(alphabetical: bool, size: bool) -> str:
     return "directory"
 
 
-@click.group()
+@click.group(cls=PagerGroup)
 def combine():
     """
     Combine folders of `.edge` and/or `.node` files.

@@ -7,9 +7,10 @@ from pathlib import Path
 
 from .console import console, print_version_info, print_header
 from .commands import plot, modular, batch, coords, utils, config, combine
+from .pager import PagerGroup
 
 
-@click.group(invoke_without_command=True)
+@click.group(cls=PagerGroup, invoke_without_command=True)
 @click.option("--version", "-v", is_flag=True, help="Show version information.")
 @click.pass_context
 def cli(ctx, version):
@@ -33,7 +34,7 @@ def cli(ctx, version):
         ctx.exit(0)
 
     if ctx.invoked_subcommand is None:
-        click.echo(ctx.get_help())
+        click.echo_via_pager(ctx.get_help())
 
 
 # Register subcommands

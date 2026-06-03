@@ -363,17 +363,6 @@ def create_enhanced_modularity_visualization(
         "* Connector Hub (red-orange)"
     )
 
-    # Camera control instructions
-    camera_control_text = ""
-    if enable_camera_controls:
-        camera_control_text = (
-            "<b>Camera Controls:</b><br>"
-            "* Drag to rotate<br>"
-            "* Scroll to zoom<br>"
-            "* Right-click drag to pan<br>"
-            "* Double-click to reset"
-        )
-
     # Update layout with camera
     scene_dict = dict(
         xaxis=dict(showgrid=False, zeroline=False, visible=False),
@@ -453,19 +442,6 @@ def create_enhanced_modularity_visualization(
                 bgcolor='rgba(255,255,255,0.9)',
                 bordercolor='black',
                 borderwidth=1,
-                borderpad=4
-            ),
-            dict(
-                text=camera_control_text,
-                showarrow=False,
-                xref="paper", yref="paper",
-                x=0.01, y=0.30,
-                xanchor="left",
-                yanchor="top",
-                font=dict(size=10),
-                bgcolor='rgba(255,255,255,0.9)' if camera_control_text else 'rgba(255,255,255,0)',
-                bordercolor='black' if camera_control_text else 'rgba(0,0,0,0)',
-                borderwidth=1 if camera_control_text else 0,
                 borderpad=4
             ),
             dict(
@@ -692,7 +668,6 @@ def create_interactive_camera_control_panel(
                 <strong>Tips:</strong><br>
                 - Drag to rotate<br>
                 - Scroll to zoom<br>
-                - Double-click to reset<br>
                 - Right-click drag to pan
             </div>
         </div>

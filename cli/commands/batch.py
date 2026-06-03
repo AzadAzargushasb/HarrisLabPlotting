@@ -11,9 +11,10 @@ from ..console import (
     create_stats_table, create_progress_context
 )
 from ..config_loader import load_config, validate_config, resolve_paths, ConfigError
+from ..pager import PagerCommand
 
 
-@click.command()
+@click.command(cls=PagerCommand)
 @click.option("--config", "-c", required=True, type=click.Path(exists=True),
               help="Path to YAML configuration file with batch settings.")
 @click.option("--output-dir", "-o", default=None, type=click.Path(),

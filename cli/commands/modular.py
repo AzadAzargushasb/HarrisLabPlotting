@@ -8,6 +8,7 @@ import os
 
 from ..console import console, print_success, print_error, print_warning, print_info, create_stats_table
 from .plot import _parse_show_node_labels_arg
+from ..pager import PagerCommand
 
 
 # Available camera view presets
@@ -18,7 +19,7 @@ CAMERA_VIEWS = [
 ]
 
 
-@click.command()
+@click.command(cls=PagerCommand)
 # === Required inputs ===
 @click.option("--mesh", "-m", required=True, type=click.Path(exists=True),
               help="Path to brain mesh file. Supported formats: .gii (GIFTI), .obj, .mz3, .ply")
