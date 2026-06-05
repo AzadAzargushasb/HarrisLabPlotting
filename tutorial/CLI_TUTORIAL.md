@@ -14,6 +14,15 @@ cd HarrisLabPlotting/test_files/tutorial_files
 output/
 ```
 
+> **Running the code blocks below.** Blocks marked **`bash`** are shell
+> commands — paste them into a terminal. Blocks marked **`python`** are
+> Python: paste them into a Jupyter notebook cell or a `.py` file
+> as-is, **or** run them from a terminal by wrapping the code in
+> `python -c '...'`. A few snippets are already written as
+> `python -c "..."` so they drop straight into a shell — to reuse those
+> in Jupyter, remove the `python -c "..."` wrapper and run the inner
+> lines directly.
+
 ---
 
 ## Table of Contents
@@ -292,6 +301,8 @@ print(f'ROI count: {len(labels)}')
 print(f'Label range: {labels.min():.0f} to {labels.max():.0f}')
 "
 ```
+
+*Shell-ready (`python -c "..."`): to run it in a Jupyter notebook or a `.py` file instead, drop the `python -c "..."` wrapper and keep the inner lines.*
 
 ### 6b. View Matrix Information
 
@@ -749,6 +760,8 @@ print(f'Size range: {sizes.min():.1f} to {sizes.max():.1f}')
 "
 ```
 
+*Shell-ready (`python -c "..."`): to run it in a Jupyter notebook or a `.py` file instead, drop the `python -c "..."` wrapper and keep the inner lines.*
+
 ### Use Vector Sizes in Plot
 
 ```bash
@@ -899,6 +912,8 @@ pd.DataFrame({"show_label": mask}).to_csv(
     "node_edge_28/show_labels_hubs_28.csv", index=False
 )
 ```
+
+*Python snippet: paste it into a Jupyter notebook or a `.py` file as-is, or run it from a shell by wrapping it in `python -c '...'`.*
 
 Other useful patterns:
 
