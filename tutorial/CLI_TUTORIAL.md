@@ -80,6 +80,17 @@ mkdir -p output
 
 Use `hlplot coords generate` to extract center-of-gravity (COG) coordinates from a NIfTI volume file.
 
+> **⚠️ Float-labeled atlases.** Some atlases store integer ROI labels as
+> floats with tiny rounding error (e.g. `0.9999999997` for label 1). An exact
+> `volume == label` match then finds **zero voxels** and every COG comes out
+> `NaN`. `coords generate` rounds labels by default (`--round-labels`), so this
+> normally "just works". To check an atlas or pre-clean it:
+> `hlplot utils info --volume atlas.nii.gz` (reports whether labels are
+> bit-exact integers) and `hlplot utils clean-labels --volume atlas.nii.gz
+> --output atlas_int.nii.gz`. See
+> [ALIGNMENT_CHECKS.md](ALIGNMENT_CHECKS.md) for the full set of pre-flight
+> checks (float labels, wrong template space, midline-collapsed atlases).
+
 ### Copy-Paste Command
 
 ```bash

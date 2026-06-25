@@ -1483,3 +1483,346 @@ def get_node_edge_connectivity(
             return True
 
     return False
+
+
+# ---------------------------------------------------------------------------
+# Label-volume hygiene + atlas/mesh alignment sanity checks
+# ---------------------------------------------------------------------------
+# These helpers answer the "is my data actually consistent before I plot?"
+# questions that bite people working with a new atlas + mesh pair:
+#   - is the atlas integer-labeled, or stored as floats (-> NaN COGs)?
+#   - do the ROI centre-of-gravity coordinates land *inside* the brain mesh,
+#     or is the atlas in a different template space (-> nodes float off the brain)?
+#   - did a bilateral/merged parcellation collapse every COG onto the midline?
+# See the "Checking atlas/mesh alignment" tutorial for worked examples.
+
+
+def _load_label_image(volume):
+    """Accept a NIfTI path or a nibabel image; return (nibabel image, float data)."""
+    import nibabel as nib
+    if isinstance(volume, (str, Path)):
+        img = nib.load(str(volume))
+    elif hasattr(volume, "affine") and hasattr(volume, "dataobj"):
+        img = volume
+    else:
+        raise TypeError(
+            "volume must be a path to a NIfTI file or a nibabel image, "
+            f"got {type(volume)!r}"
+        )
+    data = np.asanyarray(img.dataobj).astype(np.float64)
+    return img, data
+
+
+def inspect_label_volume(volume) -> Dict:
+    """
+    Report whether a label volume is cleanly integer-labeled.
+
+    This is the "how do I check?" companion to :func:`clean_label_volume`. Some
+    atlases store integer ROI labels as floats with tiny rounding error (e.g.
+    ``0.9999999`` for label 1), which breaks an exact ``volume == label`` test
+    and yields all-NaN COGs.
+
+    Parameters
+    ----------
+    volume : str | pathlib.Path | nibabel image
+        The label volume to inspect.
+
+    Returns
+    -------
+    dict
+        ``shape``, ``dtype``, ``is_integer_labeled`` (True only if values are
+        *bit-exact* integers — what an exact ``volume == label`` match needs),
+        ``near_integer`` (within 0.5 of an integer, i.e. it really is a label map),
+        ``max_label_deviation`` (largest distance of any voxel from the nearest
+        integer), ``n_labels``, ``label_min``, ``label_max``, ``contiguous``.
+    """
+    img, data = _load_label_image(volume)
+    rounded = np.rint(data)
+    max_dev = float(np.max(np.abs(data - rounded))) if data.size else 0.0
+    uniq = np.unique(rounded[rounded > 0]).astype(int)
+    # The bug that produces NaN COGs is an *exact* `volume == label` match
+    # failing, so what matters is bit-exact integers, not "close to integer":
+    # a 0.9999999997 value (deviation ~1e-8) still breaks exact matching.
+    return {
+        "shape": tuple(int(s) for s in data.shape),
+        "dtype": str(np.asanyarray(img.dataobj).dtype),
+        "is_integer_labeled": bool(max_dev == 0.0),
+        "near_integer": bool(max_dev < 0.5),
+        "max_label_deviation": max_dev,
+        "n_labels": int(uniq.size),
+        "label_min": int(uniq.min()) if uniq.size else None,
+        "label_max": int(uniq.max()) if uniq.size else None,
+        "contiguous": bool(
+            uniq.size and np.array_equal(uniq, np.arange(uniq.min(), uniq.max() + 1))
+        ),
+    }
+
+
+def clean_label_volume(volume, output_path=None, dtype="int16"):
+    """
+    Round a label volume's values to the nearest integer (and optionally save it).
+
+    Fixes atlases whose integer ROI labels are stored as floats with rounding
+    error, which otherwise make :func:`coordinate_function`'s exact label match
+    return zero voxels (all-NaN COGs). A no-op in value for a clean integer atlas.
+
+    Parameters
+    ----------
+    volume : str | pathlib.Path | nibabel image
+        The label volume to clean.
+    output_path : str | pathlib.Path, optional
+        If given, save the cleaned volume here (``.nii`` or ``.nii.gz``).
+    dtype : str, optional
+        Integer dtype for the output (default ``'int16'``).
+
+    Returns
+    -------
+    nibabel.Nifti1Image
+        The cleaned, integer-typed image (a fresh header derived from the affine,
+        so any inherited ``scl_slope``/``scl_inter`` scaling is dropped).
+    """
+    import nibabel as nib
+    img, data = _load_label_image(volume)
+    rounded = np.rint(data).astype(dtype)
+    out_img = nib.Nifti1Image(rounded, img.affine)
+    out_img.header.set_data_dtype(dtype)
+    if output_path is not None:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        nib.save(out_img, str(out_path))
+    return out_img
+
+
+def _labeled_voxel_world_bbox(img, data):
+    """World-coordinate bounding box of the labeled (nonzero) voxels."""
+    lab = np.rint(data)
+    ijk = np.argwhere(lab > 0)
+    if ijk.size == 0:
+        return None, None
+    mn = ijk.min(0)
+    mx = ijk.max(0)
+    corners = np.array(
+        [[a, b, c, 1]
+         for a in (mn[0], mx[0]) for b in (mn[1], mx[1]) for c in (mn[2], mx[2])]
+    ).T
+    world = (img.affine @ corners)[:3].T
+    return world.min(0), world.max(0)
+
+
+def _load_mesh_vertices(mesh):
+    """Accept a mesh path, an (vertices, faces) tuple, or a vertices array."""
+    if isinstance(mesh, (str, Path)):
+        from .mesh import load_mesh_file
+        vertices, _ = load_mesh_file(str(mesh))
+        return np.asarray(vertices, dtype=float)
+    if isinstance(mesh, tuple) and len(mesh) == 2:
+        return np.asarray(mesh[0], dtype=float)
+    arr = np.asarray(mesh, dtype=float)
+    if arr.ndim == 2 and arr.shape[1] == 3:
+        return arr
+    raise TypeError("mesh must be a path, (vertices, faces) tuple, or (N, 3) array")
+
+
+def _read_coords_table(coords):
+    """Load a coords CSV (comma or tab) or accept a DataFrame; need cog_x/y/z."""
+    if isinstance(coords, pd.DataFrame):
+        df = coords
+    else:
+        with open(coords, "r") as f:
+            first = f.readline()
+        sep = "\t" if "\t" in first else ","
+        df = pd.read_csv(coords, sep=sep)
+    missing = [c for c in ("cog_x", "cog_y", "cog_z") if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"Coords table is missing required columns {missing}. "
+            f"Found: {list(df.columns)}"
+        )
+    return df
+
+
+def check_coords_in_mesh(coords, mesh, midline_eps=2.0, surface_pad_mm=2.0):
+    """
+    Check that ROI centre-of-gravity coordinates fall inside a brain mesh.
+
+    Catches the most common "my nodes float off the brain" failures: an atlas in
+    a different template space than the mesh, NaN COGs from a broken extraction,
+    or a bilateral/merged parcellation whose COGs all collapse onto the midline.
+
+    The inside test uses the mesh's **convex hull** (half-space inequalities via
+    :class:`scipy.spatial.ConvexHull`) — fast even for a 200k-vertex mesh, and
+    decisive for space mismatches. A handful of genuinely-interior COGs can sit
+    just outside the hull near deep sulci, so a small number of "outside" points
+    is reported as a warning rather than a hard failure.
+
+    Parameters
+    ----------
+    coords : str | pathlib.Path | pandas.DataFrame
+        Coordinates with ``cog_x``, ``cog_y``, ``cog_z`` columns (e.g. the
+        ``*_comma.csv`` from ``hlplot coords generate``).
+    mesh : str | pathlib.Path | tuple | numpy.ndarray
+        Mesh path, an ``(vertices, faces)`` tuple, or an ``(N, 3)`` vertex array.
+    midline_eps : float, optional
+        ``|x| < midline_eps`` mm counts a COG as "on the midline" (default 2.0).
+    surface_pad_mm : float, optional
+        Tolerance (mm) added to the convex-hull half-space test (default 2.0).
+
+    Returns
+    -------
+    dict
+        Keys include ``n_rois``, ``n_nan``, ``coords_bbox``, ``mesh_bbox``,
+        ``coords_bbox_within_mesh``, ``n_inside``, ``n_outside``,
+        ``outside_names``, ``nearest_vertex_dist_mm`` (max/mean), ``n_on_midline``,
+        ``midline_fraction``, ``verdict`` (``'PASS'`` | ``'WARN'`` | ``'FAIL'``)
+        and ``messages`` (list of human-readable reasons).
+    """
+    from scipy.spatial import ConvexHull, cKDTree
+
+    df = _read_coords_table(coords)
+    names = (df["roi_name"].astype(str).tolist()
+             if "roi_name" in df.columns else [str(i) for i in range(len(df))])
+    xyz = df[["cog_x", "cog_y", "cog_z"]].to_numpy(dtype=float)
+
+    nan_mask = ~np.isfinite(xyz).all(axis=1)
+    n_nan = int(nan_mask.sum())
+    valid = xyz[~nan_mask]
+
+    verts = _load_mesh_vertices(mesh)
+    mesh_min, mesh_max = verts.min(0), verts.max(0)
+
+    messages = []
+    result = {
+        "n_rois": int(len(df)),
+        "n_nan": n_nan,
+        "mesh_bbox": (mesh_min.tolist(), mesh_max.tolist()),
+    }
+
+    if valid.size == 0:
+        result.update({
+            "coords_bbox": None, "coords_bbox_within_mesh": False,
+            "n_inside": 0, "n_outside": 0, "outside_names": [],
+            "nearest_vertex_dist_mm": {"max": None, "mean": None},
+            "n_on_midline": 0, "midline_fraction": 0.0,
+            "verdict": "FAIL",
+            "messages": ["All COG coordinates are NaN/missing."],
+        })
+        return result
+
+    c_min, c_max = valid.min(0), valid.max(0)
+    within = bool(np.all(c_min >= mesh_min - surface_pad_mm) and
+                  np.all(c_max <= mesh_max + surface_pad_mm))
+
+    # Inside-the-hull test via half-space inequalities (a*x+b*y+c*z+off <= 0).
+    hull = ConvexHull(verts)
+    eqs = hull.equations
+    inside_mask = np.all(valid @ eqs[:, :3].T + eqs[:, 3] <= surface_pad_mm, axis=1)
+    n_inside = int(inside_mask.sum())
+    n_outside = int((~inside_mask).sum())
+    valid_names = [n for n, bad in zip(np.array(names)[~nan_mask], ~inside_mask) if bad]
+
+    dist, _ = cKDTree(verts).query(valid)
+    n_mid = int((np.abs(valid[:, 0]) < midline_eps).sum())
+    mid_frac = n_mid / len(valid)
+
+    result.update({
+        "coords_bbox": (c_min.tolist(), c_max.tolist()),
+        "coords_bbox_within_mesh": within,
+        "n_inside": n_inside,
+        "n_outside": n_outside,
+        "outside_names": valid_names[:50],
+        "nearest_vertex_dist_mm": {"max": float(dist.max()), "mean": float(dist.mean())},
+        "n_on_midline": n_mid,
+        "midline_fraction": float(mid_frac),
+    })
+
+    # Verdict.
+    verdict = "PASS"
+    if n_nan:
+        verdict = "FAIL"
+        messages.append(f"{n_nan} ROI(s) have NaN COGs (broken extraction or "
+                        f"labels not found in the volume).")
+    if not within:
+        verdict = "FAIL"
+        messages.append("COG bounding box is not inside the mesh bounding box — "
+                        "atlas and mesh are likely in different spaces.")
+    frac_outside = n_outside / len(valid)
+    if frac_outside > 0.20:
+        verdict = "FAIL"
+        messages.append(f"{n_outside}/{len(valid)} COGs fall outside the mesh hull "
+                        f"({frac_outside:.0%}) — probable space mismatch.")
+    elif n_outside > 0 and verdict != "FAIL":
+        verdict = "WARN"
+        messages.append(f"{n_outside}/{len(valid)} COGs sit just outside the convex "
+                        f"hull (often fine for deep/sulcal regions).")
+    if mid_frac > 0.5:
+        verdict = "FAIL" if verdict != "FAIL" else verdict
+        messages.append(f"{n_mid}/{len(valid)} COGs lie on the midline "
+                        f"(|x|<{midline_eps}mm) — looks like a bilateral/merged "
+                        f"parcellation collapsing both hemispheres into one label.")
+    if not messages:
+        messages.append("All COGs are finite and inside the mesh.")
+    result["verdict"] = verdict
+    result["messages"] = messages
+    return result
+
+
+def compare_volume_mesh_space(volume, mesh):
+    """
+    Compare an atlas volume's labeled extent to a mesh's extent ("same space?").
+
+    A coarse but decisive check for template-space mismatches (e.g. an NMT-space
+    atlas paired with a native-space mesh): if the labeled-voxel world bounding
+    box barely overlaps the mesh bounding box, they are not in the same space.
+
+    Parameters
+    ----------
+    volume : str | pathlib.Path | nibabel image
+        The label volume.
+    mesh : str | pathlib.Path | tuple | numpy.ndarray
+        Mesh path, ``(vertices, faces)`` tuple, or ``(N, 3)`` vertex array.
+
+    Returns
+    -------
+    dict
+        ``volume_bbox``, ``mesh_bbox``, ``bbox_overlap_fraction`` (intersection /
+        smaller box volume), ``centroid_offset_mm``, ``same_space`` (bool),
+        ``verdict`` and ``messages``.
+    """
+    img, data = _load_label_image(volume)
+    v_min, v_max = _labeled_voxel_world_bbox(img, data)
+    verts = _load_mesh_vertices(mesh)
+    m_min, m_max = verts.min(0), verts.max(0)
+
+    if v_min is None:
+        return {
+            "volume_bbox": None, "mesh_bbox": (m_min.tolist(), m_max.tolist()),
+            "bbox_overlap_fraction": 0.0, "centroid_offset_mm": None,
+            "same_space": False, "verdict": "FAIL",
+            "messages": ["Volume has no labeled voxels."],
+        }
+
+    inter_min = np.maximum(v_min, m_min)
+    inter_max = np.minimum(v_max, m_max)
+    inter = np.clip(inter_max - inter_min, 0, None)
+    inter_vol = float(np.prod(inter))
+    v_vol = float(np.prod(v_max - v_min))
+    m_vol = float(np.prod(m_max - m_min))
+    overlap = inter_vol / max(min(v_vol, m_vol), 1e-9)
+    centroid_off = float(np.linalg.norm((v_min + v_max) / 2 - (m_min + m_max) / 2))
+
+    same = overlap > 0.5
+    verdict = "PASS" if same else "FAIL"
+    messages = (["Atlas and mesh extents overlap — consistent with the same space."]
+                if same else
+                [f"Atlas/mesh bounding boxes overlap only {overlap:.0%} "
+                 f"(centroid offset {centroid_off:.1f} mm) — likely different "
+                 f"template spaces."])
+    return {
+        "volume_bbox": (v_min.tolist(), v_max.tolist()),
+        "mesh_bbox": (m_min.tolist(), m_max.tolist()),
+        "bbox_overlap_fraction": overlap,
+        "centroid_offset_mm": centroid_off,
+        "same_space": same,
+        "verdict": verdict,
+        "messages": messages,
+    }

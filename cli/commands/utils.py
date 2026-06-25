@@ -258,20 +258,56 @@ def convert_node_edge(node, edge, coords, output):
 
 
 @utils.command("info")
-@click.option("--matrix", "-m", required=True, type=click.Path(exists=True),
+@click.option("--matrix", "-m", type=click.Path(exists=True),
               help="Connectivity matrix file.")
-def matrix_info(matrix):
+@click.option("--volume", "-v", type=click.Path(exists=True),
+              help="Label/atlas NIfTI volume. Reports ROI count and whether the "
+                   "labels are integer-valued (a non-integer atlas yields NaN COGs).")
+def matrix_info(matrix, volume):
     """
-    Display information about a connectivity matrix.
+    Display information about a connectivity matrix and/or a label volume.
 
     \b
     Examples:
       hlplot utils info --matrix connectivity.npy
+      hlplot utils info --volume atlas.nii.gz
     """
     try:
         import numpy as np
-        from HarrisLabPlotting import load_connectivity_input
 
+        if not matrix and not volume:
+            print_error("Provide --matrix and/or --volume.")
+            raise click.Abort()
+
+        if volume:
+            from HarrisLabPlotting import inspect_label_volume
+            print_info(f"Inspecting label volume: {volume}...")
+            vinfo = inspect_label_volume(volume)
+            vstats = {
+                "Shape": " x ".join(str(s) for s in vinfo["shape"]),
+                "Data type": vinfo["dtype"],
+                "ROI labels": vinfo["n_labels"],
+                "Label range": f"{vinfo['label_min']} to {vinfo['label_max']}",
+                "Contiguous": vinfo["contiguous"],
+                "Integer-labeled": vinfo["is_integer_labeled"],
+                "Max deviation from int": f"{vinfo['max_label_deviation']:.3g}",
+            }
+            console.print()
+            console.print(create_stats_table(vstats, title="Label Volume Information"))
+            if not vinfo["is_integer_labeled"]:
+                kind = ("stored as floats (not bit-exact integers)"
+                        if vinfo["near_integer"] else "not integer-valued")
+                print_warning(
+                    f"Labels are {kind}; an exact label match would find zero voxels "
+                    f"and produce NaN COGs. `hlplot coords generate` handles this "
+                    f"automatically (--round-labels, on by default), or pre-fix with "
+                    f"`hlplot utils clean-labels`."
+                )
+
+        if not matrix:
+            return
+
+        from HarrisLabPlotting import load_connectivity_input
         print_info(f"Loading matrix from {matrix}...")
         mat = load_connectivity_input(matrix)
 
@@ -455,4 +491,137 @@ def validate_files(mesh, coords, matrix, modules):
 
     except Exception as e:
         print_error(f"Error during validation: {e}")
+        raise click.Abort()
+
+
+@utils.command("clean-labels")
+@click.option("--volume", "-v", required=True, type=click.Path(exists=True),
+              help="Input label/atlas NIfTI whose labels may be stored as floats.")
+@click.option("--output", "-o", required=True, type=click.Path(),
+              help="Output NIfTI path (.nii or .nii.gz).")
+@click.option("--dtype", default="int16",
+              help="Integer dtype for the cleaned volume (default: int16).")
+def clean_labels_cmd(volume, output, dtype):
+    """
+    Round a float-labeled atlas to clean integer labels.
+
+    Some atlases store integer ROI labels as floats with tiny rounding error
+    (e.g. 0.9999999 for label 1). The exact label match in `coords generate`
+    then finds ZERO voxels and every COG comes out NaN. This rounds the volume
+    to clean integer labels so coordinate extraction works.
+
+    \b
+    Examples:
+      hlplot utils clean-labels --volume atlas_float.nii --output atlas_int.nii.gz
+    """
+    try:
+        from HarrisLabPlotting import inspect_label_volume, clean_label_volume
+
+        info = inspect_label_volume(volume)
+        if info["is_integer_labeled"]:
+            print_info("Labels are already bit-exact integers; rounding is a no-op (still written).")
+        else:
+            print_warning(
+                f"Labels are not bit-exact integers (max deviation "
+                f"{info['max_label_deviation']:.3g}); rounding to nearest integer."
+            )
+        clean_label_volume(volume, output_path=output, dtype=dtype)
+        print_success(f"Wrote cleaned label volume ({info['n_labels']} ROIs) to {output}")
+
+    except Exception as e:
+        print_error(f"Error cleaning labels: {e}")
+        raise click.Abort()
+
+
+@utils.command("check-alignment")
+@click.option("--coords", "-c", required=True, type=click.Path(exists=True),
+              help="ROI coordinates CSV (cog_x/cog_y/cog_z), e.g. from `coords generate`.")
+@click.option("--mesh", "-m", required=True, type=click.Path(exists=True),
+              help="Brain mesh file the COGs should land on.")
+@click.option("--volume", "-v", type=click.Path(exists=True),
+              help="Optional source label atlas, to also check it shares the mesh's space.")
+@click.option("--matrix", "-x", type=click.Path(exists=True),
+              help="Optional connectivity matrix, to check its size matches the coords.")
+def check_alignment_cmd(coords, mesh, volume, matrix):
+    """
+    Check that an atlas/coords/mesh trio are mutually consistent before plotting.
+
+    Runs a battery of sanity checks and prints a PASS / WARN / FAIL report:
+
+    \b
+      * are the ROI COGs inside the brain mesh? (convex-hull test)
+      * any NaN COGs, or COGs collapsed onto the midline?
+      * (with --volume) are the atlas and mesh in the same template space?
+      * (with --matrix) does the matrix size match the coords ROI count?
+
+    \b
+    Examples:
+      hlplot utils check-alignment --coords rois_comma.csv --mesh brain.obj
+      hlplot utils check-alignment -c rois_comma.csv -m brain.obj -v atlas.nii.gz -x conn.csv
+    """
+    try:
+        from HarrisLabPlotting import check_coords_in_mesh, compare_volume_mesh_space
+
+        order = {"PASS": 0, "WARN": 1, "FAIL": 2}
+        overall = "PASS"
+
+        def _merge(v):
+            return v if order[v] > order[overall] else overall
+
+        # --- COGs inside the mesh ---
+        print_info("Checking ROI COGs against the mesh...")
+        r = check_coords_in_mesh(coords, mesh)
+        nv = r["nearest_vertex_dist_mm"]
+        cstats = {
+            "ROIs": r["n_rois"],
+            "NaN COGs": r["n_nan"],
+            "Inside mesh hull": f"{r['n_inside']} / {r['n_inside'] + r['n_outside']}",
+            "COG bbox within mesh": r["coords_bbox_within_mesh"],
+            "On midline (|x|<2mm)": f"{r['n_on_midline']} ({r['midline_fraction']:.0%})",
+            "Nearest-vertex dist (mm)": (
+                f"max {nv['max']:.1f}, mean {nv['mean']:.1f}"
+                if nv["max"] is not None else "n/a"),
+            "Verdict": r["verdict"],
+        }
+        console.print()
+        console.print(create_stats_table(cstats, title="COGs vs Mesh"))
+        for msg in r["messages"]:
+            console.print(f"  - {msg}")
+        overall = _merge(r["verdict"])
+
+        # --- atlas vs mesh template space ---
+        if volume:
+            print_info("Checking atlas vs mesh template space...")
+            s = compare_volume_mesh_space(volume, mesh)
+            sstats = {
+                "Bbox overlap": f"{s['bbox_overlap_fraction']:.0%}",
+                "Centroid offset (mm)": (f"{s['centroid_offset_mm']:.1f}"
+                                         if s['centroid_offset_mm'] is not None else "n/a"),
+                "Same space": s["same_space"],
+                "Verdict": s["verdict"],
+            }
+            console.print()
+            console.print(create_stats_table(sstats, title="Atlas vs Mesh Space"))
+            for msg in s["messages"]:
+                console.print(f"  - {msg}")
+            overall = _merge(s["verdict"])
+
+        # --- matrix size vs coords ---
+        if matrix:
+            from HarrisLabPlotting import load_connectivity_input
+            mat = load_connectivity_input(matrix)
+            n_coords = r["n_rois"]
+            console.print()
+            if mat.shape[0] == mat.shape[1] == n_coords:
+                console.print(f"  [green]OK[/green] Matrix {mat.shape} matches {n_coords} ROIs")
+            else:
+                console.print(f"  [red]X[/red] Matrix {mat.shape} does not match {n_coords} coords ROIs")
+                overall = _merge("FAIL")
+
+        console.print()
+        color = {"PASS": "green", "WARN": "yellow", "FAIL": "red"}[overall]
+        console.print(f"[bold {color}]Overall: {overall}[/bold {color}]")
+
+    except Exception as e:
+        print_error(f"Error during alignment check: {e}")
         raise click.Abort()

@@ -75,6 +75,10 @@ from .utils import (
     load_edge_color_matrix,
     transform_pvalue_matrix,
     resolve_show_node_labels,
+    inspect_label_volume,
+    clean_label_volume,
+    check_coords_in_mesh,
+    compare_volume_mesh_space,
 )
 
 # Data loaders
@@ -141,6 +145,10 @@ __all__ = [
     "load_edge_color_matrix",
     "transform_pvalue_matrix",
     "resolve_show_node_labels",
+    "inspect_label_volume",
+    "clean_label_volume",
+    "check_coords_in_mesh",
+    "compare_volume_mesh_space",
 
     # Loaders
     "NetNeurotoolsModularityLoader",

@@ -24,8 +24,32 @@ hlplot coords generate \
   --output-dir ./coords_out
 ```
 
-This writes three files: a CSV (the canonical input for `hlplot plot`), a
-MATLAB `.mat`, and a NumPy `.npy`.
+This writes three files: a comma-delimited CSV (the canonical input for
+`hlplot plot`), a tab-delimited CSV, and a Python pickle (`.pkl`).
+
+:::{admonition} ⚠️ Float-labeled atlases → all-NaN COGs
+:class: warning
+
+Some atlases store integer ROI labels as **floats** with tiny rounding error
+(e.g. `0.9999999997` for label 1 instead of `1.0`). An exact `volume == label`
+match then finds **zero voxels**, and every coordinate comes back `NaN`.
+
+`coords generate` now rounds labels by default (`--round-labels`, on), so this
+"just works". To **check** an atlas, or to pre-clean one for other tools:
+
+```bash
+# Is the atlas cleanly integer-labeled?
+hlplot utils info --volume my_atlas.nii.gz
+
+# Round float labels to a clean integer volume
+hlplot utils clean-labels --volume my_atlas.nii.gz --output my_atlas_int.nii.gz
+```
+
+The bundled `HCPMMP1_on_MNI152_ICBM2009a_nlin_hd.nii` is a real example of a
+float-labeled atlas. See
+[Checking atlas/mesh alignment](../how_to/check_atlas_mesh_alignment.md) for the
+full set of pre-flight checks.
+:::
 
 ## Map a subset of ROIs
 
@@ -64,12 +88,13 @@ brain mesh's vertices. If your mesh and atlas use different conventions
 from HarrisLabPlotting import coordinate_function
 
 df = coordinate_function(
-    volume_file="brain_atlas_170.nii",
+    volume_file_location="brain_atlas_170.nii",
     roi_label_file="atlas_170_labels.txt",
     name_of_file="atlas_170",
     save_directory="./coords_out",
+    round_labels=True,   # round float labels before matching (default)
 )
 ```
 
-`df` is a pandas DataFrame; the function also writes the CSV / MAT / NPY
-artifacts to `save_directory`.
+`df` is a pandas DataFrame; the function also writes the `_comma.csv`,
+`_tab.csv`, and `.pkl` artifacts to `save_directory`.

@@ -122,6 +122,7 @@ tutorials/node_role_deep_dive
 tutorials/legends_and_multiview
 tutorials/static_export
 tutorials/batch_processing
+tutorials/figure_creation
 ```
 
 ```{toctree}
@@ -133,6 +134,7 @@ how_to/label_specific_rois
 how_to/color_nodes_by_module
 how_to/threshold_a_matrix
 how_to/combine_brainnet_files
+how_to/check_atlas_mesh_alignment
 ```
 
 ```{toctree}

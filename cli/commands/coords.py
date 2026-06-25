@@ -275,7 +275,13 @@ def coords_extract(file, output, method):
               help="Directory where output files will be saved.")
 @click.option("--name", "-n", default="roi_coordinates",
               help="Name for the output files (without extension).")
-def coords_generate(volume, labels, output_dir, name):
+@click.option("--round-labels/--no-round-labels", "-r", default=True,
+              help="Round the volume's label values to the nearest integer before "
+                   "matching (default on). Needed for atlases that store integer "
+                   "labels as floats (e.g. 0.9999999 for label 1), which otherwise "
+                   "match zero voxels and produce NaN COGs. Harmless for clean "
+                   "integer atlases. Disable with --no-round-labels.")
+def coords_generate(volume, labels, output_dir, name, round_labels):
     """
     Generate ROI coordinates from a NIfTI volume file with labels.
 
@@ -320,7 +326,8 @@ def coords_generate(volume, labels, output_dir, name):
             volume_file_location=volume,
             roi_label_file=labels,
             name_of_file=name,
-            save_directory=output_dir
+            save_directory=output_dir,
+            round_labels=round_labels
         )
 
         console.print()

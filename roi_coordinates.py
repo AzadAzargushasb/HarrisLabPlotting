@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Tuple, List, Union
 
 
-def coordinate_function(volume_file_location, roi_label_file, name_of_file=None, save_directory="."):
+def coordinate_function(volume_file_location, roi_label_file, name_of_file=None, save_directory=".",
+                        round_labels=True):
     """
     Extract ROI center of gravity coordinates from a volume file and save in multiple formats.
 
@@ -27,6 +28,15 @@ def coordinate_function(volume_file_location, roi_label_file, name_of_file=None,
         Name for the output files (without extension). If None, uses 'roi_coordinates'
     save_directory : str, optional
         Directory where files will be saved. Default is current directory.
+    round_labels : bool, optional
+        Round the volume's label values to the nearest integer before matching
+        (default ``True``). Some atlases store integer ROI labels as floats with
+        tiny rounding error (e.g. ``0.9999999`` for label 1). Without rounding the
+        exact ``volume == label`` test matches **zero voxels**, silently producing
+        all-NaN COGs. Rounding is harmless for true-integer atlases. Set ``False``
+        only if your labels are genuinely fractional. See
+        :func:`HarrisLabPlotting.utils.clean_label_volume` /
+        :func:`HarrisLabPlotting.utils.inspect_label_volume`.
 
     Returns
     -------
@@ -59,6 +69,16 @@ def coordinate_function(volume_file_location, roi_label_file, name_of_file=None,
 
         print(f"Volume shape: {volume_data.shape}")
         print(f"Volume data type: {volume_data.dtype}")
+
+        if round_labels:
+            rounded = np.rint(volume_data)
+            n_changed = int(np.count_nonzero(rounded != volume_data))
+            if n_changed > 0:
+                max_dev = float(np.max(np.abs(volume_data - rounded)))
+                print(f"  Note: rounded {n_changed} non-integer label voxels to the "
+                      f"nearest integer (max deviation {max_dev:.3g}). This atlas stores "
+                      f"labels as floats; pass round_labels=False to disable.")
+            volume_data = rounded
 
         unique_labels = np.unique(volume_data)
         roi_indices_in_volume = sorted([int(l) for l in unique_labels if l > 0])
