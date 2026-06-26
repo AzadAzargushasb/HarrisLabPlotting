@@ -51,6 +51,30 @@ hlplot plot ... \
 
 The same flags apply to `hlplot modular`.
 
+## Custom or transparent background
+
+By default the figure background is white. `--background-color` sets any
+background — a named color, a hex code, or `transparent` for a transparent PNG
+that drops onto any slide or poster. It applies to **both** the saved
+interactive HTML and the static export.
+
+```bash
+# Transparent PNG (real RGBA alpha channel)
+hlplot plot ... --export-image brain.png --background-color transparent
+
+# Any named color or hex
+hlplot plot ... --export-image brain.png --background-color "#1e1e1e"
+```
+
+```{interactive-plot}
+:image: images/static_export/transparent_bg_demo.png
+:caption: A transparent-background export composited over a checkerboard so the alpha channel is visible. Transparency also works for multi-view stitched strips (written as RGBA), and the same flag exists on hlplot modular.
+:height: 420
+```
+
+Python: pass `background_color="transparent"` (or a color/hex) to
+`create_brain_connectivity_plot` / `create_brain_connectivity_plot_with_modularity`.
+
 ## Multi-view stitched PNG strips
 
 For a three- or five-panel figure that shows the network from multiple

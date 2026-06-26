@@ -1,0 +1,4 @@
+# Local interactive HTML outputs (large; embed mesh + plotly.js). Not committed.
+k5_outputs/
+*.html
+__pycache__/

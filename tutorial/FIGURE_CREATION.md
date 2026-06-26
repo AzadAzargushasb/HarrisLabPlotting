@@ -77,7 +77,8 @@ hlplot modular \
   --multi-view "anterior,posterior,left,right,superior,oblique" \
   --multi-view-grid "2,3" \
   --multi-view-panel-size "700,700" \
-  --show-node-labels false \
+  --show-node-labels true \
+  --label-font-size 9 \
   --no-width-legend \
   --title "" \
   --zoom 1.3 --image-dpi 150 \
@@ -100,7 +101,7 @@ fig, _ = create_brain_connectivity_plot_with_modularity(
     module_assignments="new_atlas_demo/human/hcpmmp1_modules.csv",
     multi_view=["anterior", "posterior", "left", "right", "superior", "oblique"],
     multi_view_grid=(2, 3), multi_view_panel_size=(700, 700),
-    show_node_labels=False, show_width_legend=False, plot_title="",
+    show_node_labels=True, label_font_size=9, show_width_legend=False, plot_title="",
     zoom=1.3, image_dpi=150,
     save_path="human_grid.html",
     export_image="human_modularity_grid_2x3.png",
@@ -108,6 +109,7 @@ fig, _ = create_brain_connectivity_plot_with_modularity(
 ```
 
 ![Human HCP-MMP1 modularity, 2x3 multi-view grid](../docs/images/figure_creation/human_modularity_grid_2x3.png)
+*Nodes are labeled with their HCP-MMP short names (`V1_L`, `MST_L`, …).*
 
 ---
 
@@ -220,6 +222,43 @@ create_brain_connectivity_plot(            # customized
 
 ---
 
-*Reproduce everything: `python new_atlas_demo/generate_figure_data.py` then
-`python new_atlas_demo/render_figures.py`, or run
+## 4. Modularity visualization types (114-ROI k5 example)
+
+The `viz_type` / `inter_edge_color` / `node_roles` knobs render the same *k=5*
+community result (bundled `brain_mesh.gii` + `k5_state_0/`, 114 ROIs, 6 modules)
+several ways. Each is saved as a 3-view multi-view PNG, a superior single, and a
+local interactive HTML.
+
+```bash
+# vary --viz-type; add --inter-edge-color black or --node-roles per type
+hlplot modular \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_114_test/atlas_114_test_comma.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --modules k5_state_0/module_assignments.csv \
+  --node-metrics k5_state_0/combined_metrics.csv \
+  --viz-type all \
+  --multi-view "left,superior,posterior" \
+  --output k5_all.html --export-image k5_all_multiview.png
+```
+
+| Type | Flags |
+|---|---|
+| All edges (default) | `--viz-type all` |
+| All edges, inter black | `--viz-type all --inter-edge-color black` |
+| Intra-module only | `--viz-type intra` |
+| Inter-module only | `--viz-type inter` |
+| Inter-module only, black | `--viz-type inter --inter-edge-color black` |
+| Nodes only | `--viz-type nodes_only` |
+| Nodal roles | `--viz-type nodes_only --node-roles --node-metrics k5_state_0/combined_metrics.csv` |
+
+| All edges | Intra-module | Nodal roles (superior) |
+|---|---|---|
+| ![all](../docs/images/figure_creation/k5/default_multiview.png) | ![intra](../docs/images/figure_creation/k5/intra_multiview.png) | ![roles](../docs/images/figure_creation/k5/nodal_roles_superior.png) |
+
+---
+
+*Reproduce everything: `python new_atlas_demo/generate_figure_data.py`,
+`python new_atlas_demo/render_figures.py`, and
+`python new_atlas_demo/render_k5_viztypes.py`, or run
 `tutorial/figure_creation_new_atlases.ipynb`.*

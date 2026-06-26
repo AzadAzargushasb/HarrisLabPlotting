@@ -93,7 +93,8 @@ create_brain_connectivity_plot_with_modularity(
     multi_view=["anterior", "posterior", "left", "right", "superior", "oblique"],
     multi_view_grid=(2, 3),
     multi_view_panel_size=(700, 700),
-    show_node_labels=False,     # clean: no per-node text
+    show_node_labels=True,      # label nodes with HCP-MMP short names (V1_L, ...)
+    label_font_size=9,          # small so 30 labels stay legible
     show_width_legend=False,    # clean: drop the edge-width key
     plot_title="",              # clean: no combined title
     zoom=1.3, image_dpi=150,
@@ -111,7 +112,8 @@ hlplot modular \
   --multi-view "anterior,posterior,left,right,superior,oblique" \
   --multi-view-grid "2,3" \
   --multi-view-panel-size "700,700" \
-  --show-node-labels false \
+  --show-node-labels true \
+  --label-font-size 9 \
   --no-width-legend \
   --title "" \
   --zoom 1.3 --image-dpi 150 \
@@ -123,7 +125,8 @@ hlplot modular \
 
 *Six preset views (row-major: anterior / posterior / left, then right / superior /
 oblique) of the same 5-module network. Modules are spatially compact; the legend
-appears in the first panel only.*
+appears in the first panel only. Nodes are labeled with their HCP-MMP short names
+(`show_node_labels=True`, e.g. `V1_L`, `MST_L`).*
 
 ---
 
@@ -264,12 +267,91 @@ create_brain_connectivity_plot(
 
 ---
 
+## Modularity visualization types (114-ROI k5 example)
+
+The `create_brain_connectivity_plot_with_modularity` knobs `viz_type`,
+`inter_edge_color`, and `node_roles` render the *same* community-detection result
+several different ways. These examples use the bundled human tutorial brain
+(`brain_mesh.gii`) with a **real** *k=5* modularity result (`k5_state_0/`:
+114 ROIs, 6 modules, per-node metrics). Each type below is exported as a 3-view
+multi-view PNG (left / superior / posterior) plus a single superior view and an
+interactive HTML (HTMLs are written locally by the script, not committed).
+
+Shared Python setup:
+
+```python
+import pandas as pd
+from HarrisLabPlotting import load_mesh_file, create_brain_connectivity_plot_with_modularity
+
+vertices, faces = load_mesh_file("brain_mesh.gii")
+coords = pd.read_csv("output/atlas_114_test/atlas_114_test_comma.csv")
+base = dict(
+    vertices=vertices, faces=faces, roi_coords_df=coords,
+    connectivity_matrix="k5_state_0/connectivity_matrix.csv",
+    module_assignments="k5_state_0/module_assignments.csv",
+    node_metrics="k5_state_0/combined_metrics.csv",
+    multi_view=["left", "superior", "posterior"], show_node_labels=False,
+)
+# e.g. create_brain_connectivity_plot_with_modularity(**base, viz_type="intra",
+#         save_path="k5_intra.html", export_image="k5_intra_multiview.png")
+```
+
+| Type | Key arguments |
+| --- | --- |
+| All edges (default) | `viz_type="all"` |
+| All edges, inter-module black | `viz_type="all", inter_edge_color="black"` |
+| Intra-module edges only | `viz_type="intra"` |
+| Inter-module edges only | `viz_type="inter"` |
+| Inter-module edges only, black | `viz_type="inter", inter_edge_color="black"` |
+| Nodes only | `viz_type="nodes_only"` |
+| Nodal roles (Guimerà–Amaral) | `viz_type="nodes_only", node_roles=True` |
+
+**All edges (default)** — `viz_type="all"`
+![k5 all edges](../images/figure_creation/k5/default_multiview.png)
+
+**All edges, inter-module edges black** — `inter_edge_color="black"`
+![k5 all edges, inter black](../images/figure_creation/k5/all_inter_black_multiview.png)
+
+**Intra-module edges only** — `viz_type="intra"`
+![k5 intra-module edges](../images/figure_creation/k5/intra_multiview.png)
+
+**Inter-module edges only** — `viz_type="inter"`
+![k5 inter-module edges](../images/figure_creation/k5/inter_multiview.png)
+
+**Inter-module edges only, black** — `viz_type="inter", inter_edge_color="black"`
+![k5 inter-module edges black](../images/figure_creation/k5/inter_black_multiview.png)
+
+**Nodes only** — `viz_type="nodes_only"`
+![k5 nodes only](../images/figure_creation/k5/nodes_only_multiview.png)
+
+**Nodal roles (Guimerà–Amaral)** — `viz_type="nodes_only", node_roles=True`
+(needs `node_metrics` with `participation_coef` + `within_module_zscore`; node
+fill = module, border = role). Best read from above:
+![k5 nodal roles, superior view](../images/figure_creation/k5/nodal_roles_superior.png)
+
+CLI equivalent (vary `--viz-type`, add `--inter-edge-color black` or
+`--node-roles` per row):
+
+```bash
+hlplot modular \
+  --mesh test_files/tutorial_files/brain_mesh.gii \
+  --coords test_files/tutorial_files/output/atlas_114_test/atlas_114_test_comma.csv \
+  --matrix test_files/tutorial_files/k5_state_0/connectivity_matrix.csv \
+  --modules test_files/tutorial_files/k5_state_0/module_assignments.csv \
+  --node-metrics test_files/tutorial_files/k5_state_0/combined_metrics.csv \
+  --viz-type intra \
+  --multi-view "left,superior,posterior" \
+  --output k5_intra.html \
+  --export-image k5_intra_multiview.png
+```
+
 ## Reproduce everything
 
 ```bash
 cd test_files/tutorial_files/new_atlas_demo
 python generate_figure_data.py   # builds LUTs, coords, synthetic networks
-python render_figures.py         # renders every PNG above
+python render_figures.py         # renders the human + monkey PNGs above
+python render_k5_viztypes.py     # renders the k5 viz-type PNGs (+ local HTMLs)
 ```
 
 The notebook

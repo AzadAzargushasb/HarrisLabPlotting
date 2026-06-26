@@ -266,6 +266,11 @@ def _parse_show_node_labels_arg(s):
               help="Include title in exported image. Default: show title")
 @click.option("--export-show-legend/--export-no-legend", default=True,
               help="Include legend in exported image. Default: show legend")
+@click.option("--background-color", default="white",
+              help="Figure background color (applies to the saved HTML AND the "
+                   "exported image). Accepts a named color, a hex code like "
+                   "'#1e1e1e', or 'transparent' for a transparent PNG. "
+                   "Default: white.")
 
 # === Per-edge color matrix ===
 @click.option("--edge-color-matrix", default=None, type=click.Path(exists=True),
@@ -432,7 +437,7 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
          show_only_connected,
          hide_nodes_with_hidden_edges, node_metrics,
          export_image, image_format, image_dpi,
-         export_show_title, export_show_legend,
+         export_show_title, export_show_legend, background_color,
          edge_color_matrix, matrix_type, pvalue_threshold, sign_matrix,
          show_size_legend, show_width_legend, node_size_legend_metric,
          multi_view, custom_views, multi_view_panel_size,
@@ -744,6 +749,7 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
             image_dpi=image_dpi,
             export_show_title=export_show_title,
             export_show_legend=export_show_legend,
+            background_color=background_color,
             edge_color_matrix=edge_color_matrix,
             matrix_type=matrix_type,
             pvalue_threshold=pvalue_threshold,

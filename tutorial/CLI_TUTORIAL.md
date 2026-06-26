@@ -510,6 +510,43 @@ hlplot plot \
 | `--image-dpi` | DPI for PNG. Max ~288 for memory safety. Default: 300 |
 | `--image-format` | Format if path has no extension |
 
+### 8d. Custom / Transparent Background
+
+By default the background is white. `--background-color` sets any background
+color — a named color, a hex code, or `transparent` for a transparent PNG. It
+applies to **both** the saved interactive HTML and the static export.
+
+```bash
+# Transparent PNG (alpha channel) — drops onto any slide / poster background
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_mapped/atlas_28_mapped_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge \
+  --output output/test_transparent.html \
+  --camera oblique \
+  --export-image output/test_transparent.png \
+  --background-color transparent
+
+# Custom solid color (named color or hex)
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_mapped/atlas_28_mapped_comma.csv \
+  --matrix node_edge_28/connectivity_28.edge \
+  --output output/test_dark.html \
+  --camera oblique \
+  --export-image output/test_dark.png \
+  --background-color "#1e1e1e"
+```
+
+![Transparent-background export shown over a checkerboard](../docs/images/static_export/transparent_bg_demo.png)
+*`--background-color transparent` produces a real RGBA PNG (here composited over
+a checkerboard so the transparency is visible). Works for single views and
+multi-view stitched strips, and the same flag exists on `hlplot modular`.*
+
+| Flag | Description |
+|------|-------------|
+| `--background-color` | Background color: a name, hex (`#1e1e1e`), or `transparent`. Applies to HTML + export. Default: `white`. |
+
 ---
 
 ## 9. Clean Exports (No Title/Legend)

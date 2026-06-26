@@ -48,7 +48,8 @@ def human_modularity_grid(vertices, faces):
         multi_view=["anterior", "posterior", "left", "right", "superior", "oblique"],
         multi_view_grid=(2, 3),
         multi_view_panel_size=(700, 700),
-        show_node_labels=False,          # clean: no per-node text
+        show_node_labels=True,           # label nodes with their HCP-MMP short names
+        label_font_size=9,               # small so 30 labels stay legible
         show_width_legend=False,         # clean: drop the edge-width key
         export_image=str(IMG / "human_modularity_grid_2x3.png"),
         image_dpi=150,

@@ -72,6 +72,30 @@ MESH_LIGHTING_PRESETS: Dict[str, Dict[str, float]] = {
 }
 
 
+def _resolve_bg(color):
+    """Resolve a background spec to a plotly color. ``'transparent'`` (any
+    case) maps to ``'rgba(0,0,0,0)'``; ``None`` to ``'white'``; anything else
+    (named color or hex) passes through."""
+    if color is None:
+        return 'white'
+    if isinstance(color, str) and color.strip().lower() == 'transparent':
+        return 'rgba(0,0,0,0)'
+    return color
+
+
+def _bg_to_pil(color):
+    """Resolve a background spec to a ``(Pillow color tuple, is_transparent)``
+    pair. ``'transparent'`` -> ``((255,255,255,0), True)``; named colors / hex
+    are parsed via ``PIL.ImageColor``; unparseable values fall back to white."""
+    if isinstance(color, str) and color.strip().lower() == 'transparent':
+        return (255, 255, 255, 0), True
+    try:
+        from PIL import ImageColor
+        return ImageColor.getrgb(color), False
+    except Exception:
+        return (255, 255, 255), False
+
+
 def export_multi_view_stitched_png(
     fig: go.Figure,
     output_path: Union[str, Path],
@@ -283,6 +307,11 @@ def export_multi_view_stitched_png(
                 'z': float(cam['eye']['z']) * eye_scale,
             }
 
+    # Resolve the background once: solid color (RGB) or transparent (RGBA).
+    pil_bg, transparent = _bg_to_pil(bg_color)
+    pil_mode = 'RGBA' if transparent else 'RGB'
+    panel_bg = 'rgba(0,0,0,0)' if transparent else bg_color
+
     # Render each panel to a temporary file.
     fig_dict = fig.to_dict()
     panel_pngs: List[Path] = []
@@ -297,6 +326,12 @@ def export_multi_view_stitched_png(
                 'center': cam['center'],
                 'up': cam['up'],
             }
+            # Match each panel's render background to the requested color
+            # (so a transparent / custom canvas renders correctly even when
+            # this helper is called directly on a default-white figure).
+            scene['bgcolor'] = panel_bg
+            layout['paper_bgcolor'] = panel_bg
+            layout['plot_bgcolor'] = panel_bg
             # Strip per-panel decorations. Annotations / shapes tagged
             # with a name starting with "keep_" or "legend_" are
             # preserved on the FIRST panel only when keep_first_legend
@@ -314,10 +349,28 @@ def export_multi_view_stitched_png(
                     n = (item.get('name') or '')
                     return n.startswith('keep_') or n.startswith('legend_')
                 layout['annotations'] = [a for a in anns if _keep_panel(a)]
-                layout['shapes'] = [s for s in shapes if _keep_panel(s)]
+                kept = [s for s in shapes if _keep_panel(s)]
+                # The size-key dots were sized for the MAIN figure's
+                # (non-square) aspect ratio. Each panel renders square, so
+                # rescale the dots' x-radius to the panel aspect ratio to
+                # keep them circular instead of stretched ovals.
+                aspect = float(panel_height) / float(panel_width)
+                fixed = []
+                for s in kept:
+                    if isinstance(s, dict) and (s.get('name') or '').startswith('legend_size_dot_'):
+                        xc = (s.get('x0', 0.0) + s.get('x1', 0.0)) / 2.0
+                        ry = (s.get('y1', 0.0) - s.get('y0', 0.0)) / 2.0
+                        rx = ry * aspect
+                        s = {**s, 'x0': xc - rx, 'x1': xc + rx}
+                    fixed.append(s)
+                layout['shapes'] = fixed
             else:
                 layout['annotations'] = []
                 layout['shapes'] = []
+                # No legend on this panel -> let the brain fill the whole
+                # panel (undo the scene.domain band the main figure
+                # reserves for the legend).
+                scene['domain'] = {'x': [0.0, 1.0], 'y': [0.0, 1.0]}
             if not (keep_first_legend and i == 0):
                 layout['showlegend'] = False
             # Tight per-panel margins so the brain fills the panel and
@@ -338,31 +391,33 @@ def export_multi_view_stitched_png(
         # Pillow auto-cropping: detect the bounding box of non-white
         # pixels in each panel, crop, then pad ALL cropped panels back
         # to the same uniform size so the strip stays a clean grid.
-        def _autocrop_white(im, bg_rgb=(255, 255, 255), tol=8, pad=0):
-            arr = np.array(im.convert('RGB'))
-            diff = np.abs(arr.astype(int) - np.array(bg_rgb)).sum(axis=2)
-            mask = diff > (tol * 3)
+        def _autocrop(im, pad=0):
+            # Detect content: for a transparent canvas, content = non-zero
+            # alpha; for a solid canvas, content = pixels that differ from
+            # the background color.
+            if transparent:
+                mask = np.array(im.convert('RGBA'))[:, :, 3] > 8
+            else:
+                arr = np.array(im.convert('RGB'))
+                diff = np.abs(arr.astype(int) - np.array(pil_bg[:3])).sum(axis=2)
+                mask = diff > (8 * 3)
             if not mask.any():
                 return im
             rows = np.any(mask, axis=1)
             cols = np.any(mask, axis=0)
             r0, r1 = int(np.where(rows)[0][0]), int(np.where(rows)[0][-1])
             c0, c1 = int(np.where(cols)[0][0]), int(np.where(cols)[0][-1])
-            h, w = arr.shape[:2]
+            h, w = mask.shape[:2]
             r0 = max(0, r0 - pad)
             c0 = max(0, c0 - pad)
             r1 = min(h - 1, r1 + pad)
             c1 = min(w - 1, c1 + pad)
             return im.crop((c0, r0, c1 + 1, r1 + 1))
 
-        bg_rgb = (255, 255, 255) if bg_color in ('white', '#ffffff', '#fff') else (255, 255, 255)
-        loaded_panels = [Image.open(p).convert('RGB') for p in panel_pngs]
+        loaded_panels = [Image.open(p).convert(pil_mode) for p in panel_pngs]
 
         if autocrop:
-            cropped = [
-                _autocrop_white(im, bg_rgb=bg_rgb, pad=autocrop_padding_px)
-                for im in loaded_panels
-            ]
+            cropped = [_autocrop(im, pad=autocrop_padding_px) for im in loaded_panels]
             # Find the largest cropped width / height across panels and
             # pad EVERY cropped panel to that uniform size, brain
             # centered. This keeps the strip aligned but eliminates the
@@ -371,10 +426,10 @@ def export_multi_view_stitched_png(
             max_h = max(im.size[1] for im in cropped)
             uniform_panels = []
             for im in cropped:
-                canvas = Image.new('RGB', (max_w, max_h), bg_color)
+                canvas = Image.new(pil_mode, (max_w, max_h), pil_bg)
                 px = (max_w - im.size[0]) // 2
                 py = (max_h - im.size[1]) // 2
-                canvas.paste(im, (px, py))
+                canvas.paste(im, (px, py), im if transparent else None)
                 uniform_panels.append(canvas)
             pwidth_px = max_w
             pheight_px = max_h
@@ -391,7 +446,7 @@ def export_multi_view_stitched_png(
         strip_h = title_h + row_h * n_rows
 
         # Stitch with Pillow.
-        strip = Image.new('RGB', (strip_w, strip_h), bg_color)
+        strip = Image.new(pil_mode, (strip_w, strip_h), pil_bg)
         draw = ImageDraw.Draw(strip)
 
         # Try to load a real TrueType font; fall back to the default
@@ -433,7 +488,7 @@ def export_multi_view_stitched_png(
             row, col = divmod(i, n_cols)
             x_offset = col * pwidth_px
             y_offset = title_h + row * row_h
-            strip.paste(img, (x_offset, y_offset))
+            strip.paste(img, (x_offset, y_offset), img if transparent else None)
 
             label = panel_labels[i]
             if label:
@@ -542,13 +597,12 @@ def _add_size_width_legend(
     fig_h = float(fig.layout.height) if fig.layout.height else 900.0
 
     # ------------------------------------------------------------------
-    # Reserve room for the legend in the figure's bottom margin so the
-    # 3D scene shrinks slightly upward and the brain can never overlap
-    # the legend, regardless of camera angle.
-    #
-    # Plotly's default bottom margin is small (~80 px). We bump it by
-    # ~95 px per legend block, then place the legend in that newly
-    # reserved area.
+    # Vertical layout. Compute spacing in PIXELS first so it adapts to
+    # the largest sample dot (big dots used to collide with the title /
+    # value labels), then confine the 3D scene to the upper part of the
+    # plot area (scene.domain) and drop the legend into the freed band at
+    # the bottom. A small fixed bottom margin keeps the keys near the
+    # image edge with no empty whitespace below them.
     # ------------------------------------------------------------------
     n_blocks = (1 if node_sizes is not None else 0) + (
         1 if edge_widths is not None else 0
@@ -556,19 +610,22 @@ def _add_size_width_legend(
     if n_blocks == 0:
         return
 
-    margin_per_block_px = 95
-    extra_b_px = margin_per_block_px * n_blocks
+    # Largest sample-dot radius (px) so the title / labels clear even the
+    # biggest dot rendered in the size key.
+    max_dot_px = 0.0
+    if node_sizes is not None:
+        _ns = np.asarray(node_sizes, dtype=float)
+        _ns = _ns[~np.isnan(_ns)]
+        if _ns.size:
+            max_dot_px = float(np.max(_ns))
+    dot_r_px = max_dot_px / 2.0
 
-    current_b = 80
-    if fig.layout.margin is not None and fig.layout.margin.b is not None:
-        current_b = int(fig.layout.margin.b)
-    new_b = current_b + extra_b_px
-    fig.update_layout(margin=dict(b=new_b))
+    title_off_px = dot_r_px + 16.0          # title above a marker row
+    label_off_px = dot_r_px + 16.0          # value label below a marker row
+    block_off_px = title_off_px + label_off_px + 14.0  # between block centres
+    brain_gap_px = 28.0                     # clearance brain -> legend top
+    pad_px = 12.0
 
-    # Plot-area dimensions (in pixels) AFTER the bottom-margin bump.
-    # Paper-coord shapes in plotly map [0, 1] across the PLOT AREA, NOT
-    # the full figure. Computing rx/ry from these makes the sample dots
-    # render as actual circles regardless of the plot-area aspect ratio.
     margin_l = 80
     margin_r = 80
     margin_t = 100
@@ -579,31 +636,44 @@ def _add_size_width_legend(
             margin_r = int(fig.layout.margin.r)
         if fig.layout.margin.t is not None:
             margin_t = int(fig.layout.margin.t)
+
+    # Small fixed bottom margin -> the legend (placed at the bottom of the
+    # plot area below) ends up just above the image edge with no big band
+    # of empty whitespace underneath it.
+    new_b = 40
+    fig.update_layout(margin=dict(b=new_b))
+
+    # Paper-coord shapes map [0, 1] across the PLOT AREA (figure minus
+    # margins). rx/ry from plot_w/plot_h make the dots render as circles.
     plot_w = max(1.0, fig_w - margin_l - margin_r)
     plot_h = max(1.0, fig_h - margin_t - new_b)
 
-    # ------------------------------------------------------------------
-    # Block layout (paper coords).
-    #
-    # Stack the blocks vertically from the BOTTOM up so the lowest label
-    # is always at the same fixed y. The legend sits low enough to
-    # clear the brain plot regardless of camera angle.
-    # ------------------------------------------------------------------
-    title_dy = 0.024            # title sits this far ABOVE marker row
-    label_dy = 0.024            # label sits this far BELOW marker row
-    block_height = 0.085        # vertical span of one block (slightly taller for breathing room)
+    # Paper-coord offsets from the pixel layout.
+    title_dy = title_off_px / plot_h
+    label_dy = label_off_px / plot_h
+    block_height = block_off_px / plot_h
     entry_spacing = 0.060       # horizontal distance between consecutive samples
     total_width = entry_spacing * (n_entries - 1)
     x_start = x_center - total_width / 2.0
 
-    # Lowest (bottom-most) block's marker row y-coord. Lowered from
-    # 0.05 to 0.02 per request so the legend sits closer to the bottom
-    # edge and gives the brain plot more vertical room.
-    y_marker_bottom = 0.02
-    # Block 1 (the topmost) marker is at:
-    y_marker_top = y_marker_bottom + (n_blocks - 1) * block_height
-
+    # Stack the blocks at the very bottom of the plot area (node size on
+    # top, edge width below). The bottom-most value label sits ~pad_px
+    # above the plot-area bottom edge.
+    pad_frac = pad_px / plot_h
+    y_bottom_center = pad_frac + label_dy
+    y_marker_top = y_bottom_center + (n_blocks - 1) * block_height
     current_y = y_marker_top  # we'll subtract block_height as we go
+
+    # Confine the 3D brain to the region ABOVE the legend so it can never
+    # overlap the keys (and there's no wasted whitespace below them). The
+    # legend gets the freed bottom band; the scene gets the rest. The
+    # multi-view panel builder resets this domain for legend-free panels.
+    y_top_element = y_marker_top + title_dy
+    band_frac = min(0.55, y_top_element + brain_gap_px / plot_h)
+    try:
+        fig.update_layout(scene=dict(domain=dict(y=[band_frac, 1.0], x=[0.0, 1.0])))
+    except Exception:
+        pass
 
     # ------------------------------------------------------------------
     # Block 1: node size
@@ -924,6 +994,7 @@ def _export_figure_static(
     plot_title='',
     export_show_title=True,
     export_show_legend=True,
+    background_color='white',
 ):
     """Render ``fig`` to a static image file.
 
@@ -969,6 +1040,7 @@ def _export_figure_static(
                               and export_show_legend,
             zoom=zoom,
             grid=multi_view_grid,
+            bg_color=background_color,
         )
         print(f"Wrote stitched multi-view PNG to: {stitched_path}")
         return
@@ -1012,8 +1084,12 @@ def _export_figure_static(
         fig_dict['layout']['annotations'] = [a for a in anns if _keep(a)]
         shapes = fig_dict['layout'].get('shapes') or []
         fig_dict['layout']['shapes'] = [s for s in shapes if _keep(s)]
-        fig_dict['layout']['paper_bgcolor'] = 'white'
-        fig_dict['layout']['plot_bgcolor'] = 'white'
+        _bg = _resolve_bg(background_color)
+        fig_dict['layout']['paper_bgcolor'] = _bg
+        fig_dict['layout']['plot_bgcolor'] = _bg
+        _scene = fig_dict['layout'].get('scene')
+        if isinstance(_scene, dict):
+            _scene['bgcolor'] = _bg
         if not export_show_title:
             fig_dict['layout']['title'] = {'text': ''}
         if not export_show_legend:
@@ -1090,6 +1166,7 @@ def create_brain_connectivity_plot(
     image_dpi: int = 300,
     export_show_title: bool = True,
     export_show_legend: bool = True,
+    background_color: str = 'white',
     edge_color_matrix: Optional[Union[str, np.ndarray, pd.DataFrame]] = None,
     matrix_type: str = 'weight',
     pvalue_threshold: float = 0.05,
@@ -2014,12 +2091,13 @@ def create_brain_connectivity_plot(
         ]
 
     # Update layout with camera controls
+    _bg = _resolve_bg(background_color)
     fig.update_layout(
         scene=dict(
             xaxis=dict(showgrid=False, zeroline=False, visible=False),
             yaxis=dict(showgrid=False, zeroline=False, visible=False),
             zaxis=dict(showgrid=False, zeroline=False, visible=False),
-            bgcolor='white',
+            bgcolor=_bg,
             camera=dict(
                 eye=camera['eye'],
                 center=camera['center'],
@@ -2030,6 +2108,8 @@ def create_brain_connectivity_plot(
         ),
         width=1200,
         height=900,
+        paper_bgcolor=_bg,
+        plot_bgcolor=_bg,
         title={
             'text': full_title,
             'x': 0.5,
@@ -2178,6 +2258,7 @@ def create_brain_connectivity_plot(
         plot_title=plot_title,
         export_show_title=export_show_title,
         export_show_legend=export_show_legend,
+        background_color=background_color,
     )
 
     # Calculate graph statistics
@@ -2279,6 +2360,7 @@ def create_brain_connectivity_plot_with_modularity(
     image_dpi: int = 300,
     export_show_title: bool = True,
     export_show_legend: bool = True,
+    background_color: str = 'white',
     edge_color_matrix: Optional[Union[str, np.ndarray, pd.DataFrame]] = None,
     matrix_type: str = 'weight',
     pvalue_threshold: float = 0.05,
@@ -2703,6 +2785,7 @@ def create_brain_connectivity_plot_with_modularity(
         image_dpi=image_dpi,
         export_show_title=export_show_title,
         export_show_legend=export_show_legend,
+        background_color=background_color,
         edge_color_matrix=edge_color_matrix,
         matrix_type=matrix_type,
         pvalue_threshold=pvalue_threshold,
@@ -3361,6 +3444,7 @@ def create_brain_connectivity_plot_with_modularity(
         plot_title=full_title,
         export_show_title=export_show_title,
         export_show_legend=export_show_legend,
+        background_color=background_color,
     )
 
     return fig, graph_stats
