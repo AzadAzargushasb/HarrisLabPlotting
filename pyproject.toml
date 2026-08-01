@@ -7,7 +7,7 @@ name = "HarrisLabPlotting"
 version = "1.0.0"
 description = "Brain connectivity and modularity visualization tools for neuroscience research"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.9,<3.13"
 license = {text = "MIT"}
 authors = [
     {name = "Harris Lab"}
@@ -31,11 +31,14 @@ dependencies = [
     "scipy>=1.7",
     "nibabel>=4.0",
     "networkx>=2.6",
-    "plotly>=5.0",
+    # plotly is capped below 6.1 (which dropped kaleido 0.2.x support); kaleido
+    # is pinned to the self-contained 0.2.1 (kaleido >=1.0 needs a separate
+    # Chrome install and pulls orjson, which has no free-threaded-Python wheel).
+    "plotly>=5.0,<6",
     "click>=8.0",
     "pyyaml>=6.0",
     "rich>=12.0",
-    "kaleido>=0.2",
+    "kaleido==0.2.1",
     "pillow>=9.0",
 ]
 

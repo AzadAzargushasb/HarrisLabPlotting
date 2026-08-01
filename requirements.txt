@@ -1,8 +1,12 @@
+# NOTE: install into Python 3.9-3.12 (not 3.13+). plotly is capped below 6.1,
+# which dropped support for the self-contained kaleido 0.2.1 used here (kaleido
+# >=1.0 needs a separate Chrome install and pulls orjson, which has no
+# free-threaded-Python wheel). See environment.yml / pyproject.toml.
 numpy>=1.21
 pandas>=1.3
 scipy>=1.7
 nibabel>=4.0
 networkx>=2.6
-plotly>=5.0
+plotly>=5.0,<6
 jupyter
-kaleido
+kaleido==0.2.1
