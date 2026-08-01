@@ -59,6 +59,7 @@ from .camera import CameraController
 from .utils import (
     NumpyEncoder,
     classify_node_role,
+    short_roi_name,
     calculate_node_size,
     calculate_edge_width,
     filter_edges_by_module,
@@ -90,6 +91,7 @@ from .connectivity import (
     quick_brain_plot,
     create_brain_connectivity_plot_with_modularity,
     export_multi_view_stitched_png,
+    compose_image_grid,
 )
 
 # Enhanced modularity visualization
@@ -129,6 +131,7 @@ __all__ = [
     # Utils
     "NumpyEncoder",
     "classify_node_role",
+    "short_roi_name",
     "calculate_node_size",
     "calculate_edge_width",
     "filter_edges_by_module",
@@ -158,6 +161,7 @@ __all__ = [
     "quick_brain_plot",
     "create_brain_connectivity_plot_with_modularity",
     "export_multi_view_stitched_png",
+    "compose_image_grid",
 
     # Modularity
     "create_enhanced_modularity_visualization",

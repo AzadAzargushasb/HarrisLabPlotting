@@ -46,6 +46,7 @@ example below without any setup.
 9. [Using p-values from Python](#9-using-p-values-from-python)
 10. [Full flag reference](#10-full-flag-reference)
 11. [How `-log10(p)` is computed under the hood](#11-how--log10p-is-computed-under-the-hood)
+12. [Scaling node sizes by significance](#12-scaling-node-sizes-by-significance)
 
 ---
 
@@ -75,9 +76,22 @@ node_edge_28/
 ├── rois_28.node              # ROI names + xyz for the 28 nodes
 ├── pvalues_28.csv            # 28x28 p-value matrix (committed)
 ├── pvalues_28.npy            #   …same content, NumPy binary
+├── pvalues_28_spread.csv     # p-values spread over ~5 orders of magnitude
+├── pvalues_28_spread.npy     #   …same content, NumPy binary
 ├── pvalues_28_signs.csv      # 28x28 sign matrix (+1 / 0 / -1)
 └── pvalues_28_signs.npy
 ```
+
+> **Which p-value file should I use?** `pvalues_28.csv` is the original; its noise
+> term makes the surviving p-values bunch just under the threshold (11 of 20 land
+> between 0.009 and 0.047), so with width scaling by `-log10(p)` nearly every edge
+> renders at a similar thin width. `pvalues_28_spread.csv` instead ranks the edges
+> by their strength in `connectivity_28.edge` and assigns **log-spaced** p-values
+> from `1e-6` to `0.045`, so the 20 surviving edges spread evenly across the whole
+> `--edge-width-min/--edge-width-max` range. Use it when you want to *demonstrate*
+> width-encoded significance. Both share the same edge topology, so
+> `pvalues_28_signs.csv` applies to either. Regenerate with
+> `new_atlas_demo/generate_pvalue_spread.py`.
 
 The p-value matrix was generated **from** `connectivity_28.edge` by
 mapping the absolute connection strength to a small p-value (stronger
@@ -466,6 +480,68 @@ pipeline runs. After the transform there is no special-case code path:
 the rest of `create_brain_connectivity_plot` and
 `create_brain_connectivity_plot_with_modularity` see a normal weighted
 matrix and behave exactly as they would for a real correlation matrix.
+
+---
+
+## 12. Scaling node sizes by significance
+
+`--matrix-type pvalue` scales **edge width** by `-log10(p)` automatically, but it
+does **not** touch node sizes — there is no built-in "node size from a p-value
+matrix". To make node size encode significance too, derive a per-node value
+yourself and pass it as the node-size vector. A natural choice is the **sum of
+`-log10(p)` over each node's surviving edges** (a node with many strong
+connections gets big):
+
+```python
+import numpy as np, pandas as pd
+
+P = np.loadtxt('node_edge_28/pvalues_28.csv', delimiter=',')
+thr = 0.05
+W = np.where((P > 0) & (P <= thr), -np.log10(np.clip(P, 1e-300, 1.0)), 0.0)
+np.fill_diagonal(W, 0.0)
+sig = W.sum(axis=1)                                    # per-node significance
+node_px = 6 + (sig - sig.min()) / (sig.max() - sig.min()) * (24 - 6)   # -> [6,24] px
+pd.DataFrame({'size': node_px}).to_csv('node_sig_sizes.csv', index=False)
+```
+
+Then plot with edge width AND node size both encoding significance. Passing a
+`node_metrics` frame with a `node_significance` column plus
+`node_size_legend_metric` labels the size key with the significance values (not
+raw pixels):
+
+```python
+from HarrisLabPlotting import create_brain_connectivity_plot
+
+create_brain_connectivity_plot(
+    vertices=v, faces=f, roi_coords_df=coords,
+    connectivity_matrix='node_edge_28/pvalues_28.csv',
+    matrix_type='pvalue', pvalue_threshold=thr,
+    edge_width=(1.0, 9.0),                 # width ~ -log10(p)
+    node_size=node_px,                     # size ~ per-node significance
+    node_metrics=pd.DataFrame({'roi_name': coords['roi_name'], 'node_significance': sig}),
+    node_size_legend_metric='node_significance',
+    camera_view='superior',
+    save_path='pval_scaled.html', export_image='pval_scaled.png',
+)
+```
+
+The CLI equivalent passes the derived `node_sig_sizes.csv` via `--node-size`. A
+full worked "uniform vs. significance-scaled" figure pair (and the tweakable
+`render_pvalue_scaling.py` script) is in the
+[figure-creation tutorial](FIGURE_CREATION.md#6-scaling-edges-and-nodes-by-p-value-significance).
+
+### How to read the edge-width key
+
+The width key labels its five sample lines with **original p-values**, ordered so
+the key reads **thin → thick left to right**: the *largest* p (least significant)
+gets the thinnest line, the *smallest* p (most significant) the thickest —
+matching the edges themselves, since width scales with `-log10(p)`.
+
+Ticks are **log-spaced** (p-values are log-scaled; linear ticks over e.g.
+`[4.6e-05, 0.047]` would bunch four of five entries at the least-significant end).
+Each sample line is drawn at the **actual rendered pixel width** of the edge whose
+p-value is closest to that tick, so the key honors `edge_width` **and**
+`edge_width_scale` — e.g. `edge_width_scale=2` visibly doubles the key's lines.
 
 ---
 

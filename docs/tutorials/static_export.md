@@ -31,6 +31,47 @@ hlplot plot ... \
 `--image-dpi` sets the static-export resolution. For print figures, 300 DPI
 at the size you'll publish at is the standard.
 
+## Export canvas size (`--export-size`) — keep it square
+
+Single-image exports render on a **square 1200×1200 canvas by default**. That does
+two things:
+
+- **Even margins** on the left and right, so the brain sits centered with balanced
+  whitespace rather than being cropped tight against the frame.
+- **A DPI-stable 3D aspect.** This is the important one: on a **non-square** canvas
+  kaleido renders the 3D scene with a *scale-dependent* aspect, so the brain's
+  proportions visibly change as you raise `--image-dpi` (the "squished at high DPI"
+  problem). On a square canvas the aspect stays put at any DPI.
+
+```bash
+hlplot plot ... --export-image brain.png                       # 1200x1200 (default)
+hlplot plot ... --export-image brain.png --export-size "1600,1600"
+```
+
+:::{warning}
+**Keep width == height if you intend to change `--image-dpi`.** `--image-dpi` is a
+supersampling factor (`min(dpi/72, 8)`) applied to this canvas, and on a non-square
+canvas the rendered 3D aspect shifts between DPIs. A non-square `--export-size`
+prints a warning for this reason.
+:::
+
+Python: `export_size=(1200, 1200)` on `create_brain_connectivity_plot` /
+`create_brain_connectivity_plot_with_modularity`.
+
+## Tight crops (`--export-autocrop`)
+
+If you want the figure trimmed tight to its content instead of the even margins,
+opt in with `--export-autocrop` (Python `export_autocrop=True`). It is **off by
+default**. It is a pure crop — the aspect is never stretched — but note the output
+dimensions then depend on the content rather than being a fixed canvas.
+
+```bash
+hlplot plot ... --export-image brain.png --export-autocrop   # trim to content
+```
+
+SVG/PDF exports are vector and are never auto-cropped. The multi-view stitched
+export already crops each panel, so it is unaffected by this flag.
+
 ## "Clean" exports for publications
 
 Strip the title and legend so the figure drops straight into a manuscript

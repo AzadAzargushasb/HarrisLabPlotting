@@ -271,6 +271,18 @@ def _parse_show_node_labels_arg(s):
                    "exported image). Accepts a named color, a hex code like "
                    "'#1e1e1e', or 'transparent' for a transparent PNG. "
                    "Default: white.")
+@click.option("--export-size", default="1200,1200", type=str,
+              help="Exported image canvas size as 'width,height'. Default "
+                   "'1200,1200' (square) which leaves even margins on both sides. "
+                   "KEEP WIDTH == HEIGHT if you plan to change --image-dpi: on a "
+                   "non-square canvas the rendered 3D aspect varies with the DPI "
+                   "scale factor, so the brain's proportions shift between DPIs.")
+@click.option("--export-autocrop/--no-export-autocrop", default=False,
+              help="Trim the uniform background border around the exported PNG so "
+                   "the figure frames its content tightly (no even margins). Pure "
+                   "crop, no aspect warp. Raster only (SVG/PDF unaffected). "
+                   "Default: OFF -- the square --export-size canvas already gives "
+                   "even margins and a DPI-stable aspect.")
 
 # === Per-edge color matrix ===
 @click.option("--edge-color-matrix", default=None, type=click.Path(exists=True),
@@ -437,7 +449,7 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
          show_only_connected,
          hide_nodes_with_hidden_edges, node_metrics,
          export_image, image_format, image_dpi,
-         export_show_title, export_show_legend, background_color,
+         export_show_title, export_show_legend, background_color, export_size, export_autocrop,
          edge_color_matrix, matrix_type, pvalue_threshold, sign_matrix,
          show_size_legend, show_width_legend, node_size_legend_metric,
          multi_view, custom_views, multi_view_panel_size,
@@ -657,6 +669,16 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
                 f"{[v if isinstance(v, str) else v.get('name', '?') for v in multi_view_list]}"
             )
 
+        # Parse --export-size 'w,h'
+        try:
+            es_parts = [int(p.strip()) for p in export_size.split(',')]
+            if len(es_parts) != 2 or es_parts[0] < 1 or es_parts[1] < 1:
+                raise ValueError
+            export_size_val = (es_parts[0], es_parts[1])
+        except ValueError:
+            print_error(f"--export-size must be 'width,height' (got {export_size!r})")
+            raise click.Abort()
+
         # Parse --multi-view-panel-size 'w,h'
         try:
             mvps_parts = [int(p.strip()) for p in multi_view_panel_size.split(',')]
@@ -750,6 +772,8 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
             export_show_title=export_show_title,
             export_show_legend=export_show_legend,
             background_color=background_color,
+            export_size=export_size_val,
+            export_autocrop=export_autocrop,
             edge_color_matrix=edge_color_matrix,
             matrix_type=matrix_type,
             pvalue_threshold=pvalue_threshold,

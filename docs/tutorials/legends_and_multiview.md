@@ -757,6 +757,48 @@ hlplot plot \
   --export-image tutorial/output_legend_views/multi_view_grid_padded.png
 ```
 
+### 4e. Different meshes per cell — `compose_image_grid` / `hlplot montage`
+
+Everything above renders **one** mesh from several cameras. When the grid cells
+are **different meshes** (a human, a rat and a macaque brain side by side),
+`multi_view` can't express that — each panel is a re-render of the same figure.
+For that case, render each panel independently and stitch them with
+`compose_image_grid` (Python) or `hlplot montage` (CLI). It reuses the same Pillow
+back-end as the multi-view stitcher (auto-crop, uniform pad, labels), but takes a
+list of **pre-rendered PNGs** instead of one figure, and adds per-column headers
+and per-row labels.
+
+```python
+from HarrisLabPlotting import compose_image_grid
+
+# panels is a row-major list of PNGs you already rendered (one per mesh/view).
+compose_image_grid(
+    ['human_left.png', 'rat_superior.png', 'macaque_right.png',
+     'human_anterior.png', 'rat_inferior.png', 'macaque_posterior.png'],
+    output_path='species_grid.png',
+    grid=(2, 3),
+    col_labels=['Human', 'Rat', 'Macaque'],
+    panel_labels=['Left', 'Superior', 'Right', 'Anterior', 'Inferior', 'Posterior'],
+    title='Cross-species comparison',
+)
+```
+
+```bash
+hlplot montage \
+  --images "human_left.png,rat_superior.png,macaque_right.png,human_anterior.png,rat_inferior.png,macaque_posterior.png" \
+  --grid "2,3" \
+  --col-labels "Human,Rat,Macaque" \
+  --panel-labels "Left,Superior,Right,Anterior,Inferior,Posterior" \
+  --output species_grid.png
+```
+
+:::{tip}
+`--multi-view-grid` lays out camera views of **one** scene; `hlplot montage`
+composes **independent** images (different meshes, conditions, subjects). The
+worked human/rat/macaque example is in
+[Figure creation](figure_creation.md#cross-species-comparison-grid-human-rat-macaque).
+:::
+
 ---
 
 ## 5. Calling `export_multi_view_stitched_png` directly
@@ -806,6 +848,7 @@ helper_path = export_multi_view_stitched_png(
 | Multi-view stitched PNG | no (opt-in) | omit `multi_view` | reinterprets `export_image`, PNG-only |
 | Custom views in multi-view | yes (per-entry dict) | n/a | mix presets + dicts freely |
 | Multi-view grid layout | no (opt-in) | omit `multi_view_grid` / `--multi-view-grid` | default is 1×N row; pass `(rows, cols)` for an R×C grid |
+| Multi-mesh grid (montage) | n/a (separate tool) | — | `compose_image_grid` / `hlplot montage`; composes different meshes/images, unlike `multi_view` |
 | Global zoom (single + multi) | no (opt-in) | `zoom=1.0` (default) | replaces the removed `multi_view_zoom`; applies to both single-view and multi-view |
 
 Both features render in the saved HTML AND in static exports (the

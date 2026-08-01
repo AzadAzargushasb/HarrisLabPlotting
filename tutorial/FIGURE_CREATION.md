@@ -81,7 +81,7 @@ hlplot modular \
   --label-font-size 9 \
   --no-width-legend \
   --title "" \
-  --zoom 1.3 --image-dpi 150 \
+  --zoom 1.3 --image-dpi 600 \
   --output new_atlas_demo/output/human_grid.html \
   --export-image new_atlas_demo/output/human_modularity_grid_2x3.png
 ```
@@ -102,7 +102,7 @@ fig, _ = create_brain_connectivity_plot_with_modularity(
     multi_view=["anterior", "posterior", "left", "right", "superior", "oblique"],
     multi_view_grid=(2, 3), multi_view_panel_size=(700, 700),
     show_node_labels=True, label_font_size=9, show_width_legend=False, plot_title="",
-    zoom=1.3, image_dpi=150,
+    zoom=1.3, image_dpi=600,
     save_path="human_grid.html",
     export_image="human_modularity_grid_2x3.png",
 )
@@ -225,8 +225,8 @@ create_brain_connectivity_plot(            # customized
 ## 4. Modularity visualization types (114-ROI k5 example)
 
 The `viz_type` / `inter_edge_color` / `node_roles` knobs render the same *k=5*
-community result (bundled `brain_mesh.gii` + `k5_state_0/`, 114 ROIs, 6 modules)
-several ways. Each is saved as a 3-view multi-view PNG, a superior single, and a
+community result (the bundled **rat** brain `brain_mesh.gii` + `k5_state_0/`,
+114 ROIs, 6 modules; the region names are rodent) several ways. Each is saved as a 3-view multi-view PNG, a superior single, and a
 local interactive HTML.
 
 ```bash
@@ -250,15 +250,169 @@ hlplot modular \
 | Inter-module only | `--viz-type inter` |
 | Inter-module only, black | `--viz-type inter --inter-edge-color black` |
 | Nodes only | `--viz-type nodes_only` |
-| Nodal roles | `--viz-type nodes_only --node-roles --node-metrics k5_state_0/combined_metrics.csv` |
+| Nodal roles, no edges | `--viz-type nodes_only --node-roles --node-metrics k5_state_0/combined_metrics.csv` |
+| Nodal roles, with edges | `--viz-type all --node-roles --node-metrics k5_state_0/combined_metrics.csv` |
 
 | All edges | Intra-module | Nodal roles (superior) |
 |---|---|---|
 | ![all](../docs/images/figure_creation/k5/default_multiview.png) | ![intra](../docs/images/figure_creation/k5/intra_multiview.png) | ![roles](../docs/images/figure_creation/k5/nodal_roles_superior.png) |
 
+### Nodal roles — with and without edges
+
+`--node-roles` classifies each node by the Guimerà–Amaral cartographic two-cut
+(needs `--node-metrics` with `participation_coef` + `within_module_zscore`) and
+draws the role as a colored **border ring**; the node fill stays its module
+color. It composes with any `--viz-type`, so you can show roles *without* edges
+(`--viz-type nodes_only`) or *with* the full edge set (`--viz-type all`):
+
+| Nodal roles, no edges | Nodal roles, with edges |
+|---|---|
+| ![roles no edges](../docs/images/figure_creation/k5/nodal_roles_multiview.png) | ![roles with edges](../docs/images/figure_creation/k5/nodal_roles_edges_multiview.png) |
+
+```bash
+# roles WITH edges (drop --viz-type all -> nodes_only for the no-edge version)
+hlplot modular \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_114_test/atlas_114_test_comma.csv \
+  --matrix k5_state_0/connectivity_matrix.csv \
+  --modules k5_state_0/module_assignments.csv \
+  --node-metrics k5_state_0/combined_metrics.csv \
+  --viz-type all --node-roles \
+  --multi-view "left,superior,posterior" \
+  --output k5_roles_edges.html --export-image k5_nodal_roles_edges_multiview.png
+```
+
 ---
 
-*Reproduce everything: `python new_atlas_demo/generate_figure_data.py`,
-`python new_atlas_demo/render_figures.py`, and
-`python new_atlas_demo/render_k5_viztypes.py`, or run
-`tutorial/figure_creation_new_atlases.ipynb`.*
+## 5. Cross-species comparison grid (human / rat / macaque)
+
+`--multi-view` shows **one** mesh from several cameras. To put **different
+meshes side by side** — a human, a rat and a macaque brain in one figure — render
+each panel separately and stitch them with the new `hlplot montage` command (the
+CLI face of `compose_image_grid`).
+
+This is a 2×3 grid: columns are the three species, and the six cells are the six
+canonical BrainNet views (row 1 = left / superior / right, row 2 = anterior /
+inferior / posterior). Each species shows a minimal module-colored network on its
+own mesh. Two versions are produced — one with ROI labels, one without.
+
+```python
+import pandas as pd
+from HarrisLabPlotting import (
+    load_mesh_file, create_brain_connectivity_plot_with_modularity, compose_image_grid,
+)
+
+# Render each (species, view) panel to its own PNG (single-view, no legend), then
+# compose. See new_atlas_demo/render_species_grid.py for the full loop; the key
+# call for one panel:
+create_brain_connectivity_plot_with_modularity(
+    vertices=v, faces=f, roi_coords_df=coords,
+    connectivity_matrix=matrix, module_assignments=modules,
+    node_size=10, edge_width=2.0, show_node_labels=False,
+    show_width_legend=False, plot_title="",
+    multi_view=["left"],                 # one view -> tight autocropped panel
+    multi_view_panel_size=(500, 500),
+    multi_view_keep_first_legend=False,
+    multi_view_panel_labels=[""],
+    image_dpi=600, zoom=1.3,
+    save_path="dummy.html", export_image="human_left.png",
+)
+
+# ... six panels later, compose them row-major into the grid:
+compose_image_grid(
+    ["human_left.png", "rat_superior.png", "macaque_right.png",
+     "human_anterior.png", "rat_inferior.png", "macaque_posterior.png"],
+    "species_grid.png",
+    grid=(2, 3),
+    col_labels=["Human", "Rat", "Macaque"],
+    panel_labels=["Left", "Superior", "Right", "Anterior", "Inferior", "Posterior"],
+)
+```
+
+```bash
+# After rendering the six panel PNGs (one per species+view) with hlplot modular:
+hlplot montage \
+  --images "human_left.png,rat_superior.png,macaque_right.png,human_anterior.png,rat_inferior.png,macaque_posterior.png" \
+  --grid "2,3" \
+  --col-labels "Human,Rat,Macaque" \
+  --panel-labels "Left,Superior,Right,Anterior,Inferior,Posterior" \
+  --output species_grid.png
+```
+
+Three versions are produced — labels off, full `roi_name`, and **short-form** labels
+(hemisphere suffix stripped: `V1_L`→`V1`, `AUD_left`→`AUD`, `IFG.cv_left`→`IFG.cv`),
+which keeps 28–30 labels legible.
+
+| ROI labels off | ROI labels on (full) |
+|---|---|
+| ![species grid, no labels](../docs/images/figure_creation/species/species_grid_nolabels.png) | ![species grid, labeled](../docs/images/figure_creation/species/species_grid_labeled.png) |
+
+![species grid, short-form labels](../docs/images/figure_creation/species/species_grid_shortform.png)
+*Short-form labels — `roi_name` minus the hemisphere suffix.*
+
+*The rat mesh is the bundled `brain_mesh.gii`; the human and macaque meshes are the
+HCP-MMP1 and MacBNA surfaces. `hlplot montage` auto-crops each panel and adds the
+column headers + per-cell view labels. Camera zoom is set **per (species, view)**
+(`ZOOM` in the script), since a view whose brain fills more of its panel otherwise
+reads as too zoomed in beside the others.*
+
+---
+
+## 6. Scaling edges and nodes by p-value significance
+
+A p-value network can encode significance two ways at once: **edge width** by
+`-log10(p)` (built in via `--matrix-type pvalue`) and **node size** by a per-node
+significance you derive yourself. The figure below contrasts a flat baseline
+(uniform width + scalar size) with the fully scaled version.
+
+```python
+import numpy as np, pandas as pd
+from HarrisLabPlotting import load_mesh_file, create_brain_connectivity_plot
+
+# Per-node significance = sum of -log10(p) over each node's surviving edges.
+P = np.loadtxt("node_edge_28/pvalues_28.csv", delimiter=",")
+thr = 0.05
+W = np.where((P > 0) & (P <= thr), -np.log10(np.clip(P, 1e-300, 1.0)), 0.0)
+np.fill_diagonal(W, 0.0)
+sig = W.sum(axis=1)
+node_px = 6 + (sig - sig.min()) / (sig.max() - sig.min()) * (24 - 6)   # -> [6, 24] px
+
+# (a) uniform baseline: fixed width + scalar size (no significance encoded)
+create_brain_connectivity_plot(
+    vertices=v, faces=f, roi_coords_df=coords,
+    connectivity_matrix="node_edge_28/pvalues_28.csv",
+    matrix_type="pvalue", pvalue_threshold=thr,
+    edge_width=2.0, node_size=8, camera_view="superior", image_dpi=600,
+    export_image="pval_uniform.png", save_path="pval_uniform.html")
+
+# (b) scaled: edge width ~ -log10(p), node size ~ per-node significance
+create_brain_connectivity_plot(
+    vertices=v, faces=f, roi_coords_df=coords,
+    connectivity_matrix="node_edge_28/pvalues_28.csv",
+    matrix_type="pvalue", pvalue_threshold=thr,
+    edge_width=(1.0, 9.0), node_size=node_px,
+    node_metrics=pd.DataFrame({"roi_name": coords["roi_name"], "node_significance": sig}),
+    node_size_legend_metric="node_significance",
+    camera_view="superior", image_dpi=600,
+    export_image="pval_scaled.png", save_path="pval_scaled.html")
+```
+
+| Uniform (no scaling) | Significance-scaled edges + nodes |
+|---|---|
+| ![pval uniform](../docs/images/figure_creation/pvalue/pval_uniform.png) | ![pval scaled](../docs/images/figure_creation/pvalue/pval_scaled.png) |
+
+*Left: every edge and node identical. Right: thicker edges = smaller p (see the
+p-value width key), bigger nodes = higher summed significance (see the
+`node_significance` size key). The `PVALUE_THRESHOLD`, edge-width and size ranges
+are exposed at the top of `render_pvalue_scaling.py` / the notebook cell so they
+are easy to tweak.*
+
+---
+
+*Reproduce everything: `python new_atlas_demo/generate_figure_data.py`, then
+`python new_atlas_demo/render_figures.py`,
+`python new_atlas_demo/render_k5_viztypes.py`,
+`python new_atlas_demo/render_species_grid.py`,
+`python new_atlas_demo/generate_pvalue_spread.py`, and
+`python new_atlas_demo/render_pvalue_scaling.py`, or run
+`tutorial/figure_creation_new_atlases.ipynb`. All figures render at 600 DPI.*

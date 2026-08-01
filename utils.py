@@ -7,6 +7,7 @@ Helper functions for brain visualization calculations.
 import numpy as np
 import pandas as pd
 import json
+import re
 from pathlib import Path
 from typing import Tuple, Union, List, Optional, Dict
 from scipy.io import loadmat
@@ -101,6 +102,69 @@ def classify_node_role(z_score: float, pc: float) -> Tuple[str, str]:
             return "Connector hub", "#000000"        # black (R6)
         else:
             return "Kinless hub", "#FF00FF"          # magenta (R7)
+
+
+_HEMI_SUFFIX_RE = re.compile(r"_(L|R|left|right|lh|rh)$", re.IGNORECASE)
+_LEFT_TOKENS = {"l", "left", "lh"}
+
+
+def short_roi_name(name: str, keep_hemisphere: bool = False) -> str:
+    """Shorten an ROI name by dropping or abbreviating its hemisphere suffix.
+
+    Useful when labeling a plot with more than a handful of nodes: a suffix like
+    ``_left`` roughly doubles the label length, so shortening it cuts label
+    overlap a lot.
+
+    Only a *trailing* hemisphere token is matched, so names that merely contain
+    "left"/"right"/"l"/"r" are untouched.
+
+    ``keep_hemisphere=True`` abbreviates the suffix to ``_L`` / ``_R`` instead of
+    removing it. Prefer that whenever both hemispheres are visible in the same
+    view (e.g. superior/inferior): dropping the suffix entirely makes the left and
+    right node of a pair carry the *same* label, which is ambiguous.
+
+    Examples
+    --------
+    >>> short_roi_name('V1_L')
+    'V1'
+    >>> short_roi_name('AUD_left')
+    'AUD'
+    >>> short_roi_name('IFG.cv_left')
+    'IFG.cv'
+    >>> short_roi_name('Thalamus_P_right')
+    'Thalamus_P'
+    >>> short_roi_name('Cerebellum')          # nothing to shorten
+    'Cerebellum'
+    >>> short_roi_name('AUD_left', keep_hemisphere=True)
+    'AUD_L'
+    >>> short_roi_name('Thalamus_P_right', keep_hemisphere=True)
+    'Thalamus_P_R'
+    >>> short_roi_name('V1_L', keep_hemisphere=True)
+    'V1_L'
+    >>> short_roi_name('Cerebellum', keep_hemisphere=True)
+    'Cerebellum'
+
+    Parameters
+    ----------
+    name : str
+        The full ROI name (e.g. from a coords file's ``roi_name`` column).
+    keep_hemisphere : bool
+        When ``True``, abbreviate the suffix to ``_L``/``_R`` rather than drop it,
+        so left/right pairs stay distinguishable. Default ``False``.
+
+    Returns
+    -------
+    str
+        The shortened name. Names without a trailing hemisphere token are
+        returned unchanged either way.
+    """
+    text = str(name)
+    match = _HEMI_SUFFIX_RE.search(text)
+    base = _HEMI_SUFFIX_RE.sub("", text)
+    if match is None or not keep_hemisphere:
+        return base
+    side = "L" if match.group(1).lower() in _LEFT_TOKENS else "R"
+    return f"{base}_{side}"
 
 
 def calculate_node_size(pc: float, z_score: float, mode: str = 'both',

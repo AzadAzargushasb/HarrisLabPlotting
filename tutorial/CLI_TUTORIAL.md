@@ -41,7 +41,9 @@ output/
 12. [Modularity Visualization](#12-modularity-visualization)
 13. [Vector Node Sizes from CSV](#13-vector-node-sizes-from-csv)
 14. [Selectively Labelling ROIs](#14-selectively-labelling-rois)
-15. [Command Reference](#15-command-reference)
+15. [Cross-species montage grid (`hlplot montage`)](#15-cross-species-montage-grid-hlplot-montage)
+16. [Scaling edges and nodes by p-value significance](#16-scaling-edges-and-nodes-by-p-value-significance)
+17. [Command Reference](#17-command-reference)
 
 ---
 
@@ -549,6 +551,38 @@ multi-view stitched strips, and the same flag exists on `hlplot modular`.*
 
 ---
 
+### 8e. Export Canvas Size and Tight Crops
+
+Single-image exports render on a **square 1200×1200 canvas by default**, which
+gives even margins on both sides *and* keeps the 3D aspect stable as you change
+`--image-dpi`.
+
+```bash
+# Default 1200x1200
+hlplot plot ... --export-image brain.png
+
+# Bigger square canvas
+hlplot plot ... --export-image brain.png --export-size "1600,1600"
+
+# Trim tight to the content instead of even margins (opt-in)
+hlplot plot ... --export-image brain.png --export-autocrop
+```
+
+> **Keep width == height if you plan to change `--image-dpi`.** `--image-dpi` is a
+> supersampling factor (`min(dpi/72, 8)`) applied to this canvas. On a **non-square**
+> canvas kaleido renders the 3D scene with a *scale-dependent* aspect, so the
+> brain's proportions shift between DPIs — a non-square `--export-size` therefore
+> prints a warning. On the square default the aspect is identical at 150/300/600.
+
+#### Flag Explanations
+
+| Flag | Description |
+|------|-------------|
+| `--export-size` | Export canvas as `'width,height'`. Default `'1200,1200'`. Keep it square if you change `--image-dpi`. |
+| `--export-autocrop` / `--no-export-autocrop` | Trim the background border tight to the content. Default **off** (even margins). Pure crop — never warps the aspect. Raster only; multi-view already crops per panel. |
+
+---
+
 ## 9. Clean Exports (No Title/Legend)
 
 For publication figures where you add your own caption.
@@ -1045,7 +1079,103 @@ fig.show()
 
 ---
 
-## 15. Command Reference
+## 15. Cross-species montage grid (`hlplot montage`)
+
+`--multi-view` (section 8-style stitching) renders **one** mesh from several
+cameras. When you need a grid whose **columns are different meshes** — e.g. a
+human, a rat and a macaque brain — render each panel separately, then compose
+them with `hlplot montage`. It is a general image-grid composer: give it a
+row-major list of pre-rendered PNGs and a grid shape, and it auto-crops each
+panel and adds column headers, per-cell labels, and an optional title.
+
+```bash
+# Step 1 — render each species+view panel (single view, clean, no legend).
+# Repeat per species/view; here is one panel (human, left lateral):
+hlplot modular \
+  --mesh "parcellation and meshes/HCPMMP1_on_MNI152_ICBM2009a_nlin_hd_0.obj" \
+  --coords new_atlas_demo/human/hcpmmp1_coords.csv \
+  --matrix new_atlas_demo/human/hcpmmp1_modular_network.csv \
+  --modules new_atlas_demo/human/hcpmmp1_modules.csv \
+  --node-size 10 --edge-width-fixed 2 \
+  --no-width-legend --export-no-legend --title "" \
+  --multi-view "left" --multi-view-panel-size "500,500" \
+  --multi-view-no-first-legend \
+  --image-dpi 600 --zoom 1.3 \
+  --output dummy.html --export-image human_left.png
+
+# Step 2 — compose the six panels (row-major) into a 2x3 grid.
+hlplot montage \
+  --images "human_left.png,rat_superior.png,macaque_right.png,human_anterior.png,rat_inferior.png,macaque_posterior.png" \
+  --grid "2,3" \
+  --col-labels "Human,Rat,Macaque" \
+  --panel-labels "Left,Superior,Right,Anterior,Inferior,Posterior" \
+  --output species_grid.png
+```
+
+### Flag Explanations (`hlplot montage`)
+
+| Flag | Description |
+|------|-------------|
+| `--images` / `-i` | Comma-separated panel PNG paths, in **row-major** order (left-to-right, then top-to-bottom). |
+| `--grid` | Grid shape `'rows,cols'` (e.g. `'2,3'`). Omit for a single row. `rows*cols` must be ≥ the number of images. |
+| `--col-labels` | One header per column, drawn once along the top. |
+| `--row-labels` | One label per row, drawn in a left gutter. |
+| `--panel-labels` | One label per image, drawn below each panel. |
+| `--title` | Combined title above the whole grid. |
+| `--background-color` | Named color, hex, or `transparent` (RGBA output). |
+| `--no-autocrop` | Keep each panel's original border instead of trimming it. |
+
+The Python equivalent is `compose_image_grid(images, output, grid=(2,3),
+col_labels=[...], panel_labels=[...])`. See
+[FIGURE_CREATION.md](FIGURE_CREATION.md) for the full human/rat/macaque example.
+
+---
+
+## 16. Scaling edges and nodes by p-value significance
+
+With `--matrix-type pvalue`, edge width already scales with `-log10(p)` (thicker
+= more significant). You can encode significance on the **nodes** too by deriving
+a per-node significance vector and passing it as `--node-size`. The contrast
+below is uniform (nothing scaled) vs. edges **and** nodes scaled by significance.
+
+```bash
+# (a) uniform baseline: fixed edge width + scalar node size (nothing encodes p)
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_test_comma.csv \
+  --matrix node_edge_28/pvalues_28.csv \
+  --matrix-type pvalue --pvalue-threshold 0.05 \
+  --edge-width-fixed 2 --node-size 8 \
+  --camera superior --image-dpi 600 \
+  --output pval_uniform.html --export-image pval_uniform.png
+
+# (b) scaled: edge width ~ -log10(p) AND node size ~ per-node significance.
+# Derive the per-node size CSV first (sum of -log10(p) over surviving edges):
+python -c "
+import numpy as np, pandas as pd
+P = np.loadtxt('node_edge_28/pvalues_28.csv', delimiter=',')
+W = np.where((P>0)&(P<=0.05), -np.log10(np.clip(P,1e-300,1.0)), 0.0); np.fill_diagonal(W,0)
+sig = W.sum(1); px = 6 + (sig-sig.min())/(sig.max()-sig.min())*(24-6)
+pd.DataFrame({'size': px}).to_csv('node_sig_sizes.csv', index=False)"
+
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_test_comma.csv \
+  --matrix node_edge_28/pvalues_28.csv \
+  --matrix-type pvalue --pvalue-threshold 0.05 \
+  --edge-width-min 1 --edge-width-max 9 \
+  --node-size node_sig_sizes.csv \
+  --camera superior --image-dpi 600 \
+  --output pval_scaled.html --export-image pval_scaled.png
+```
+
+The uniform figure draws every edge/node identically; the scaled figure makes the
+most significant connections thick and their nodes large. See the
+[p-value plotting tutorial](PVALUE_PLOTTING_TUTORIAL.md) for the full flag set.
+
+---
+
+## 17. Command Reference
 
 ### Main Commands
 
@@ -1053,6 +1183,7 @@ fig.show()
 hlplot --help              # Main help
 hlplot plot --help         # Connectivity plot
 hlplot modular --help      # Modularity visualization
+hlplot montage --help      # Compose pre-rendered PNGs into a grid
 hlplot batch --help        # Batch processing
 hlplot coords --help       # Coordinate utilities
 hlplot utils --help        # Matrix utilities

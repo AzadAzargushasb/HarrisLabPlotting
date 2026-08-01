@@ -25,7 +25,8 @@ from HarrisLabPlotting import (
 HERE = Path(__file__).resolve().parent
 PARC = HERE.parent / "parcellation and meshes"
 REPO = HERE.parents[2]                                  # repo root
-IMG = REPO / "docs" / "images" / "figure_creation"
+from _figpaths import FIG_DPI, fig_root
+IMG = fig_root(REPO)
 IMG.mkdir(parents=True, exist_ok=True)
 HTML = Path(tempfile.mkdtemp(prefix="figcreate_html_"))  # throwaway HTML dummies
 
@@ -52,7 +53,7 @@ def human_modularity_grid(vertices, faces):
         label_font_size=9,               # small so 30 labels stay legible
         show_width_legend=False,         # clean: drop the edge-width key
         export_image=str(IMG / "human_modularity_grid_2x3.png"),
-        image_dpi=150,
+        image_dpi=FIG_DPI,
         zoom=1.3,
     )
     print("  wrote human_modularity_grid_2x3.png")
@@ -65,7 +66,7 @@ def monkey_legend_demos(vertices, faces):
     metrics = str(MONKEY / "metrics.csv")
     common = dict(vertices=vertices, faces=faces, roi_coords_df=coords,
                   connectivity_matrix=str(EXAMPLE_EDGE), camera_view="oblique",
-                  show_node_labels=False, image_dpi=150, zoom=1.5)
+                  show_node_labels=False, image_dpi=FIG_DPI, zoom=1.2)
 
     # (a) vector node sizes -> auto size key; scaled edges -> auto width key
     create_brain_connectivity_plot(
@@ -101,7 +102,7 @@ def monkey_default_vs_custom(vertices, faces):
     modules = (np.arange(n) % 4) + 1     # synthetic 4-module coloring
     common = dict(vertices=vertices, faces=faces, roi_coords_df=coords,
                   connectivity_matrix=str(EXAMPLE_EDGE), camera_view="oblique",
-                  show_node_labels=False, image_dpi=150, zoom=1.5)
+                  show_node_labels=False, image_dpi=FIG_DPI, zoom=1.2)
 
     # Default: scalar size, fixed width, default purple nodes, no keys.
     create_brain_connectivity_plot(

@@ -6,7 +6,7 @@ import click
 from pathlib import Path
 
 from .console import console, print_version_info, print_header
-from .commands import plot, modular, batch, coords, utils, config, combine
+from .commands import plot, modular, batch, coords, utils, config, combine, montage
 from .pager import PagerGroup
 
 
@@ -45,6 +45,7 @@ cli.add_command(coords.coords)
 cli.add_command(utils.utils)
 cli.add_command(config.config)
 cli.add_command(combine.combine)
+cli.add_command(montage.montage)
 
 
 if __name__ == "__main__":

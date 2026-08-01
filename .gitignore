@@ -67,3 +67,6 @@ docs/_pkg_root/
 
 # Local agent / IDE config
 .claude/
+
+# Full-resolution (600 DPI) publication figure copies -- kept locally only.
+docs/images/figure_creation/publication/

@@ -96,6 +96,38 @@ def _bg_to_pil(color):
         return (255, 255, 255), False
 
 
+def _autocrop_image(im, pil_bg, transparent, pad=0):
+    """Trim the uniform background border around ``im`` to its content bbox.
+
+    Crops (never resamples) so the aspect ratio is preserved exactly — this is a
+    pure pixel crop, so it can never warp or stretch the image. Content is
+    detected as non-zero alpha (transparent canvas) or pixels that differ from
+    ``pil_bg`` (solid canvas). ``pad`` leaves that many background pixels around
+    the content. Returns ``im`` unchanged if no content is found.
+
+    Shared by the multi-view stitcher (``_stitch_panels_to_png``) and the
+    single-image PNG export so both frame content tightly at any DPI.
+    """
+    if transparent:
+        mask = np.array(im.convert('RGBA'))[:, :, 3] > 8
+    else:
+        arr = np.array(im.convert('RGB'))
+        diff = np.abs(arr.astype(int) - np.array(pil_bg[:3])).sum(axis=2)
+        mask = diff > (8 * 3)
+    if not mask.any():
+        return im
+    rows = np.any(mask, axis=1)
+    cols = np.any(mask, axis=0)
+    r0, r1 = int(np.where(rows)[0][0]), int(np.where(rows)[0][-1])
+    c0, c1 = int(np.where(cols)[0][0]), int(np.where(cols)[0][-1])
+    h, w = mask.shape[:2]
+    r0 = max(0, r0 - pad)
+    c0 = max(0, c0 - pad)
+    r1 = min(h - 1, r1 + pad)
+    c1 = min(w - 1, c1 + pad)
+    return im.crop((c0, r0, c1 + 1, r1 + 1))
+
+
 def export_multi_view_stitched_png(
     fig: go.Figure,
     output_path: Union[str, Path],
@@ -387,124 +419,27 @@ def export_multi_view_stitched_png(
             )
             panel_pngs.append(tmp_png)
 
-        # ----- Auto-crop white borders around each panel ---------------
-        # Pillow auto-cropping: detect the bounding box of non-white
-        # pixels in each panel, crop, then pad ALL cropped panels back
-        # to the same uniform size so the strip stays a clean grid.
-        def _autocrop(im, pad=0):
-            # Detect content: for a transparent canvas, content = non-zero
-            # alpha; for a solid canvas, content = pixels that differ from
-            # the background color.
-            if transparent:
-                mask = np.array(im.convert('RGBA'))[:, :, 3] > 8
-            else:
-                arr = np.array(im.convert('RGB'))
-                diff = np.abs(arr.astype(int) - np.array(pil_bg[:3])).sum(axis=2)
-                mask = diff > (8 * 3)
-            if not mask.any():
-                return im
-            rows = np.any(mask, axis=1)
-            cols = np.any(mask, axis=0)
-            r0, r1 = int(np.where(rows)[0][0]), int(np.where(rows)[0][-1])
-            c0, c1 = int(np.where(cols)[0][0]), int(np.where(cols)[0][-1])
-            h, w = mask.shape[:2]
-            r0 = max(0, r0 - pad)
-            c0 = max(0, c0 - pad)
-            r1 = min(h - 1, r1 + pad)
-            c1 = min(w - 1, c1 + pad)
-            return im.crop((c0, r0, c1 + 1, r1 + 1))
-
+        # Load the rendered panels and hand them to the shared stitcher,
+        # which auto-crops, pads to a uniform size, and composites the
+        # grid (title + per-panel labels). Keeping this in one helper lets
+        # compose_image_grid() reuse the exact same layout machinery.
         loaded_panels = [Image.open(p).convert(pil_mode) for p in panel_pngs]
-
-        if autocrop:
-            cropped = [_autocrop(im, pad=autocrop_padding_px) for im in loaded_panels]
-            # Find the largest cropped width / height across panels and
-            # pad EVERY cropped panel to that uniform size, brain
-            # centered. This keeps the strip aligned but eliminates the
-            # plotly default padding.
-            max_w = max(im.size[0] for im in cropped)
-            max_h = max(im.size[1] for im in cropped)
-            uniform_panels = []
-            for im in cropped:
-                canvas = Image.new(pil_mode, (max_w, max_h), pil_bg)
-                px = (max_w - im.size[0]) // 2
-                py = (max_h - im.size[1]) // 2
-                canvas.paste(im, (px, py), im if transparent else None)
-                uniform_panels.append(canvas)
-            pwidth_px = max_w
-            pheight_px = max_h
-        else:
-            uniform_panels = loaded_panels
-
-        # Reserved vertical space for combined title and per-panel labels.
-        # Each row reserves a label band underneath its panels, so a
-        # multi-row grid stacks (panel + label) units vertically.
-        title_h = int((title_font_size * 2.5) * scale) if title else 0
-        label_h = int((label_font_size * 2.0) * scale)
-        row_h = pheight_px + label_h
-        strip_w = pwidth_px * n_cols
-        strip_h = title_h + row_h * n_rows
-
-        # Stitch with Pillow.
-        strip = Image.new(pil_mode, (strip_w, strip_h), pil_bg)
-        draw = ImageDraw.Draw(strip)
-
-        # Try to load a real TrueType font; fall back to the default
-        # bitmap font if no TTF is available on the system.
-        def _load_font(px_size):
-            for candidate in (
-                'arial.ttf', 'Arial.ttf', 'DejaVuSans.ttf',
-                'LiberationSans-Regular.ttf', 'Helvetica.ttf',
-            ):
-                try:
-                    return ImageFont.truetype(candidate, int(px_size))
-                except (OSError, IOError):
-                    continue
-            return ImageFont.load_default()
-
-        title_font = _load_font(title_font_size * scale) if title else None
-        label_font = _load_font(label_font_size * scale)
-
-        # Combined title row
-        if title:
-            try:
-                bbox = draw.textbbox((0, 0), title, font=title_font)
-                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            except AttributeError:
-                tw, th = draw.textsize(title, font=title_font)
-            draw.text(
-                ((strip_w - tw) / 2, (title_h - th) / 2),
-                title,
-                fill='black',
-                font=title_font,
-            )
-
-        # Paste the (autocropped + uniformly padded) panels into the
-        # strip and draw the per-panel labels below each one. Cells fill
-        # row-major; any cell index >= len(uniform_panels) is left as
-        # background (only happens when grid was given and rows*cols
-        # exceeds the number of views).
-        for i, img in enumerate(uniform_panels):
-            row, col = divmod(i, n_cols)
-            x_offset = col * pwidth_px
-            y_offset = title_h + row * row_h
-            strip.paste(img, (x_offset, y_offset), img if transparent else None)
-
-            label = panel_labels[i]
-            if label:
-                try:
-                    bbox = draw.textbbox((0, 0), label, font=label_font)
-                    lw, lh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-                except AttributeError:
-                    lw, lh = draw.textsize(label, font=label_font)
-                lx = x_offset + (pwidth_px - lw) / 2
-                ly = y_offset + pheight_px + (label_h - lh) / 2
-                draw.text((lx, ly), label, fill='black', font=label_font)
-
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        strip.save(str(output_path), format='PNG')
-        return output_path
+        return _stitch_panels_to_png(
+            loaded_panels,
+            output_path,
+            n_rows=n_rows,
+            n_cols=n_cols,
+            pil_bg=pil_bg,
+            pil_mode=pil_mode,
+            transparent=transparent,
+            scale=scale,
+            panel_labels=panel_labels,
+            title=title,
+            label_font_size=label_font_size,
+            title_font_size=title_font_size,
+            autocrop=autocrop,
+            autocrop_padding_px=autocrop_padding_px,
+        )
     finally:
         # Clean up the temp panel pngs.
         for p in panel_pngs:
@@ -518,6 +453,301 @@ def export_multi_view_stitched_png(
             pass
 
 
+def _stitch_panels_to_png(
+    panel_images,
+    output_path,
+    *,
+    n_rows: int,
+    n_cols: int,
+    pil_bg,
+    pil_mode: str,
+    transparent: bool,
+    scale: float,
+    panel_labels: Optional[List[str]] = None,
+    col_labels: Optional[List[str]] = None,
+    row_labels: Optional[List[str]] = None,
+    title: str = "",
+    label_font_size: int = 18,
+    title_font_size: int = 22,
+    header_font_size: Optional[int] = None,
+    autocrop: bool = True,
+    autocrop_padding_px: int = 8,
+) -> Path:
+    """Composite a list of already-rendered panel images into one PNG grid.
+
+    This is the shared back-end used by both ``export_multi_view_stitched_png``
+    (one mesh, N cameras) and ``compose_image_grid`` (N independent images,
+    e.g. different species meshes). It is agnostic to how ``panel_images``
+    were produced.
+
+    Panels fill ROW-MAJOR. Each panel is optionally auto-cropped to its
+    content, then every panel is padded to a common size so the grid stays
+    aligned. On top of the per-panel labels (drawn below each panel) and the
+    combined ``title`` (drawn above everything), this helper can also draw a
+    per-column header band (``col_labels``, one label centered over each
+    column) and a left gutter of per-row labels (``row_labels``).
+
+    Parameters mirror the tail of ``export_multi_view_stitched_png``; when
+    ``col_labels`` and ``row_labels`` are both ``None`` the output is
+    identical to the original single-figure multi-view strip.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    if header_font_size is None:
+        header_font_size = int(round(label_font_size * 1.3))
+
+    if panel_labels is not None and len(panel_labels) != len(panel_images):
+        raise ValueError(
+            f"`panel_labels` length ({len(panel_labels)}) does not match the "
+            f"number of panels ({len(panel_images)})"
+        )
+    if col_labels is not None and len(col_labels) != n_cols:
+        raise ValueError(
+            f"`col_labels` length ({len(col_labels)}) does not match n_cols "
+            f"({n_cols})"
+        )
+    if row_labels is not None and len(row_labels) != n_rows:
+        raise ValueError(
+            f"`row_labels` length ({len(row_labels)}) does not match n_rows "
+            f"({n_rows})"
+        )
+
+    # ----- Auto-crop borders around each panel, then pad to a uniform size.
+    panels = [im.convert(pil_mode) for im in panel_images]
+    if autocrop:
+        panels = [_autocrop_image(im, pil_bg, transparent, pad=autocrop_padding_px)
+                  for im in panels]
+
+    # Pad every (cropped) panel to the largest panel size, centered. For
+    # uniform same-size inputs (the multi-view case) this is a no-op paste,
+    # so the original strip output is preserved byte-for-byte.
+    max_w = max(im.size[0] for im in panels)
+    max_h = max(im.size[1] for im in panels)
+    uniform_panels = []
+    for im in panels:
+        if im.size == (max_w, max_h):
+            uniform_panels.append(im)
+            continue
+        canvas = Image.new(pil_mode, (max_w, max_h), pil_bg)
+        px = (max_w - im.size[0]) // 2
+        py = (max_h - im.size[1]) // 2
+        canvas.paste(im, (px, py), im if transparent else None)
+        uniform_panels.append(canvas)
+    pwidth_px = max_w
+    pheight_px = max_h
+
+    # Reserved bands: combined title (top), optional column-header band
+    # (below the title), optional left gutter for row labels, and a
+    # per-row label band underneath each panel row.
+    title_h = int((title_font_size * 2.5) * scale) if title else 0
+    header_h = int((header_font_size * 2.2) * scale) if col_labels else 0
+    label_h = int((label_font_size * 2.0) * scale) if (panel_labels and any(panel_labels)) else 0
+    gutter_w = int((header_font_size * 2.5) * scale) if row_labels else 0
+    row_h = pheight_px + label_h
+    top_h = title_h + header_h
+    strip_w = gutter_w + pwidth_px * n_cols
+    strip_h = top_h + row_h * n_rows
+
+    strip = Image.new(pil_mode, (strip_w, strip_h), pil_bg)
+    draw = ImageDraw.Draw(strip)
+
+    def _load_font(px_size):
+        for candidate in (
+            'arial.ttf', 'Arial.ttf', 'DejaVuSans.ttf',
+            'LiberationSans-Regular.ttf', 'Helvetica.ttf',
+        ):
+            try:
+                return ImageFont.truetype(candidate, int(px_size))
+            except (OSError, IOError):
+                continue
+        return ImageFont.load_default()
+
+    def _measure(text, font):
+        try:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            return bbox[2] - bbox[0], bbox[3] - bbox[1]
+        except AttributeError:
+            return draw.textsize(text, font=font)
+
+    title_font = _load_font(title_font_size * scale) if title else None
+    label_font = _load_font(label_font_size * scale)
+    header_font = _load_font(header_font_size * scale) if (col_labels or row_labels) else None
+
+    # Combined title (spans the full strip width).
+    if title:
+        tw, th = _measure(title, title_font)
+        draw.text(((strip_w - tw) / 2, (title_h - th) / 2),
+                  title, fill='black', font=title_font)
+
+    # Column headers: one label centered over each column, in the header
+    # band directly under the title.
+    if col_labels:
+        for c, ctext in enumerate(col_labels):
+            if not ctext:
+                continue
+            cw, ch = _measure(ctext, header_font)
+            cx = gutter_w + c * pwidth_px + (pwidth_px - cw) / 2
+            cy = title_h + (header_h - ch) / 2
+            draw.text((cx, cy), ctext, fill='black', font=header_font)
+
+    # Row labels: one label in the left gutter, vertically centered on each
+    # row's panel band.
+    if row_labels:
+        for r, rtext in enumerate(row_labels):
+            if not rtext:
+                continue
+            rw, rh = _measure(rtext, header_font)
+            rx = (gutter_w - rw) / 2
+            ry = top_h + r * row_h + (pheight_px - rh) / 2
+            draw.text((rx, ry), rtext, fill='black', font=header_font)
+
+    # Paste panels row-major + per-panel labels below each.
+    for i, img in enumerate(uniform_panels):
+        row, col = divmod(i, n_cols)
+        x_offset = gutter_w + col * pwidth_px
+        y_offset = top_h + row * row_h
+        strip.paste(img, (x_offset, y_offset), img if transparent else None)
+
+        label = panel_labels[i] if panel_labels else None
+        if label:
+            lw, lh = _measure(label, label_font)
+            lx = x_offset + (pwidth_px - lw) / 2
+            ly = y_offset + pheight_px + (label_h - lh) / 2
+            draw.text((lx, ly), label, fill='black', font=label_font)
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    strip.save(str(output_path), format='PNG')
+    return output_path
+
+
+def compose_image_grid(
+    images: List[Union[str, Path]],
+    output_path: Union[str, Path],
+    *,
+    grid: Optional[Tuple[int, int]] = None,
+    col_labels: Optional[List[str]] = None,
+    row_labels: Optional[List[str]] = None,
+    panel_labels: Optional[List[str]] = None,
+    title: str = "",
+    background_color: str = 'white',
+    label_font_size: int = 18,
+    title_font_size: int = 22,
+    header_font_size: int = 24,
+    autocrop: bool = True,
+    autocrop_padding_px: int = 8,
+) -> Path:
+    """Compose a list of pre-rendered PNGs into one labeled grid image.
+
+    Unlike ``export_multi_view_stitched_png`` (which renders ONE figure from
+    several camera angles), this composes N **independent** images — e.g. one
+    brain mesh per column of a cross-species comparison figure. Render each
+    panel however you like (``create_brain_connectivity_plot`` /
+    ``..._with_modularity`` single-view exports, or any other PNG), then hand
+    the paths here.
+
+    Parameters
+    ----------
+    images : list of str or Path
+        Panel PNG paths in ROW-MAJOR order (left-to-right, then top-to-bottom).
+    output_path : str or Path
+        Where to write the composed grid PNG.
+    grid : (rows, cols), optional
+        Grid shape. ``None`` (default) lays every image in a single row
+        (``1 x len(images)``). ``rows * cols`` must be >= ``len(images)``
+        (trailing cells are left as background); a smaller grid raises.
+    col_labels : list of str, optional
+        One header per column (length must equal the number of columns),
+        drawn once in a band along the top of the grid. Ideal for species /
+        condition names.
+    row_labels : list of str, optional
+        One label per row (length must equal the number of rows), drawn in a
+        left gutter.
+    panel_labels : list of str, optional
+        One label per image (length must equal ``len(images)``), drawn
+        directly below each panel. Ideal for per-cell view names.
+    title : str
+        Combined title drawn above the whole grid.
+    background_color : str
+        Canvas background: a named color, a hex code, or ``'transparent'``
+        for an RGBA output. Default ``'white'``.
+    label_font_size, title_font_size, header_font_size : int
+        Base font sizes (px, at reference resolution) for the per-panel
+        labels, the title, and the column/row headers. They are scaled up
+        automatically for high-resolution panels.
+    autocrop : bool
+        Trim each panel's background border before compositing so brains sit
+        tightly in the grid. Default ``True``.
+    autocrop_padding_px : int
+        Padding left around each cropped panel when ``autocrop=True``.
+
+    Returns
+    -------
+    Path
+        Path to the written grid PNG.
+    """
+    try:
+        from PIL import Image
+    except ImportError as e:
+        raise ImportError(
+            "compose_image_grid requires Pillow. Install with: pip install pillow"
+        ) from e
+
+    paths = [Path(p) for p in images]
+    if not paths:
+        raise ValueError("`images` must contain at least one path")
+    for p in paths:
+        if not p.exists():
+            raise FileNotFoundError(f"Panel image not found: {p}")
+
+    if grid is None:
+        n_rows, n_cols = 1, len(paths)
+    else:
+        try:
+            n_rows, n_cols = int(grid[0]), int(grid[1])
+        except (TypeError, ValueError, IndexError) as e:
+            raise ValueError(
+                f"`grid` must be a (rows, cols) pair of positive integers; "
+                f"got {grid!r}"
+            ) from e
+        if n_rows < 1 or n_cols < 1:
+            raise ValueError(f"`grid` rows and cols must both be >= 1; got {grid!r}")
+        if n_rows * n_cols < len(paths):
+            raise ValueError(
+                f"grid={grid!r} has only {n_rows * n_cols} cells but "
+                f"{len(paths)} images were given. Increase the grid or remove images."
+            )
+
+    pil_bg, transparent = _bg_to_pil(background_color)
+    pil_mode = 'RGBA' if transparent else 'RGB'
+    loaded = [Image.open(p).convert(pil_mode) for p in paths]
+
+    # Derive a font scale from the panel resolution so labels read at a
+    # sensible size on both small and very large (high-DPI) panels.
+    ref_w = max(im.size[0] for im in loaded)
+    scale = max(1.0, ref_w / 800.0)
+
+    return _stitch_panels_to_png(
+        loaded,
+        output_path,
+        n_rows=n_rows,
+        n_cols=n_cols,
+        pil_bg=pil_bg,
+        pil_mode=pil_mode,
+        transparent=transparent,
+        scale=scale,
+        panel_labels=panel_labels,
+        col_labels=col_labels,
+        row_labels=row_labels,
+        title=title,
+        label_font_size=label_font_size,
+        title_font_size=title_font_size,
+        header_font_size=header_font_size,
+        autocrop=autocrop,
+        autocrop_padding_px=autocrop_padding_px,
+    )
+
+
 def _add_size_width_legend(
     fig: go.Figure,
     *,
@@ -527,6 +757,7 @@ def _add_size_width_legend(
     edge_widths: Optional[np.ndarray] = None,
     edge_width_legend_title: str = "Edge weight",
     edge_width_legend_values: Optional[np.ndarray] = None,
+    edge_width_legend_logscale: bool = False,
     edge_color: str = '#444',
     n_entries: int = 5,
     x_center: float = 0.5,
@@ -565,15 +796,26 @@ def _add_size_width_legend(
         get a legend like "PC: 0.10, 0.30, 0.50, 0.70, 0.90" instead of
         "Node size: 8, 12, 16, 20, 25".
     edge_widths : np.ndarray, optional
-        Array of edge weights/strengths. When provided, a 5-entry width
-        legend is added.
+        The **actual rendered pixel width** of each drawn edge (i.e. already
+        through ``calculate_edge_width``, so ``edge_width`` and
+        ``edge_width_scale`` are baked in). When provided, a 5-entry width
+        legend is added whose sample lines are drawn at these real widths.
+        Must be index-aligned with ``edge_width_legend_values``.
     edge_width_legend_title : str
         Title shown above the width legend.
     edge_width_legend_values : np.ndarray, optional
-        Same as ``node_size_legend_values`` but for edges. In p-value mode
-        the caller passes the original p-values here so the legend reads
-        e.g. "p-value: 0.05, 0.04, 0.02, 0.01, 0.001" rather than the
-        ``-log10(p)`` weights.
+        The **semantic value** behind each edge, index-aligned with
+        ``edge_widths``: the raw weight in weight mode, or the original
+        p-value in p-value mode. These supply the LABELS; for each tick the
+        sample line is looked up from the edge whose value is closest, so the
+        drawn width always truthfully corresponds to its label (this is the
+        same approach the node-size key uses).
+    edge_width_legend_logscale : bool
+        Space the ticks logarithmically and order them so the legend reads
+        e.g. "p-value: 0.05, 0.04, 0.02, 0.01, 0.001" -- descending p, hence
+        thin -> thick left to right (smaller p == more significant == wider
+        edge). Set by the caller in p-value mode; p-values are log-scaled, so
+        linear ticks would bunch four of five entries at the high-p end.
     edge_color : str
         Color of the sample line segments in the width legend.
     n_entries : int
@@ -623,12 +865,12 @@ def _add_size_width_legend(
     title_off_px = dot_r_px + 16.0          # title above a marker row
     label_off_px = dot_r_px + 16.0          # value label below a marker row
     block_off_px = title_off_px + label_off_px + 14.0  # between block centres
-    brain_gap_px = 28.0                     # clearance brain -> legend top
     pad_px = 12.0
 
     margin_l = 80
     margin_r = 80
     margin_t = 100
+    margin_b = 80               # plotly's default bottom margin
     if fig.layout.margin is not None:
         if fig.layout.margin.l is not None:
             margin_l = int(fig.layout.margin.l)
@@ -636,17 +878,24 @@ def _add_size_width_legend(
             margin_r = int(fig.layout.margin.r)
         if fig.layout.margin.t is not None:
             margin_t = int(fig.layout.margin.t)
+        if fig.layout.margin.b is not None:
+            margin_b = int(fig.layout.margin.b)
 
-    # Small fixed bottom margin -> the legend (placed at the bottom of the
-    # plot area below) ends up just above the image edge with no big band
-    # of empty whitespace underneath it.
-    new_b = 40
-    fig.update_layout(margin=dict(b=new_b))
+    # NOTE: this function deliberately does NOT touch layout.margin and does NOT
+    # confine the 3D scene via scene.domain. Doing either would make a figure
+    # WITH keys render its brain differently from the otherwise-identical figure
+    # WITHOUT keys (the key-less one auto-skips this function), which is exactly
+    # the "the legend is messing up the image" problem: the same network would
+    # come out a different size depending on whether a key happened to be drawn.
+    # Instead the keys are drawn as an OVERLAY in the empty band at the bottom of
+    # the plot area, so the brain is pixel-identical either way. The trade-off is
+    # that for a camera angle whose brain reaches the very bottom of the frame the
+    # keys can sit over it; use show_size_legend / show_width_legend to opt out.
 
     # Paper-coord shapes map [0, 1] across the PLOT AREA (figure minus
     # margins). rx/ry from plot_w/plot_h make the dots render as circles.
     plot_w = max(1.0, fig_w - margin_l - margin_r)
-    plot_h = max(1.0, fig_h - margin_t - new_b)
+    plot_h = max(1.0, fig_h - margin_t - margin_b)
 
     # Paper-coord offsets from the pixel layout.
     title_dy = title_off_px / plot_h
@@ -664,16 +913,8 @@ def _add_size_width_legend(
     y_marker_top = y_bottom_center + (n_blocks - 1) * block_height
     current_y = y_marker_top  # we'll subtract block_height as we go
 
-    # Confine the 3D brain to the region ABOVE the legend so it can never
-    # overlap the keys (and there's no wasted whitespace below them). The
-    # legend gets the freed bottom band; the scene gets the rest. The
-    # multi-view panel builder resets this domain for legend-free panels.
-    y_top_element = y_marker_top + title_dy
-    band_frac = min(0.55, y_top_element + brain_gap_px / plot_h)
-    try:
-        fig.update_layout(scene=dict(domain=dict(y=[band_frac, 1.0], x=[0.0, 1.0])))
-    except Exception:
-        pass
+    # (The 3D scene is intentionally left at its full default domain -- see the
+    # note above. The keys overlay the bottom band of the plot area.)
 
     # ------------------------------------------------------------------
     # Block 1: node size
@@ -761,38 +1002,39 @@ def _add_size_width_legend(
     # ------------------------------------------------------------------
     if edge_widths is not None and len(edge_widths) > 0:
         widths_arr = np.asarray(edge_widths, dtype=float)
-        widths_arr = widths_arr[~np.isnan(widths_arr)]
-        if widths_arr.size >= 2:
-            # Choose ticks based on either the legend values (e.g. p-values)
-            # or the raw widths.
-            if (
-                edge_width_legend_values is not None
-                and len(edge_width_legend_values) > 0
-            ):
-                lvals = np.asarray(edge_width_legend_values, dtype=float)
-                lvals = lvals[~np.isnan(lvals)]
-                if lvals.size >= 2:
-                    lo, hi = float(np.min(lvals)), float(np.max(lvals))
-                    ticks = np.linspace(lo, hi, n_entries)
-                    sample_labels = [f"{t:.3g}" for t in ticks]
-                    # The line widths themselves: pick from the actual
-                    # widths array at the same index as the closest
-                    # tick value in lvals (we don't have a 1:1 mapping
-                    # between widths_arr and lvals beyond ordering).
-                    # Simpler: use n_entries evenly spaced widths.
-                    sample_widths_px = list(np.linspace(
-                        float(np.min(widths_arr)),
-                        float(np.max(widths_arr)),
-                        n_entries,
-                    ))
-                else:
-                    sample_labels = []
-                    sample_widths_px = []
+        # `widths_arr` holds the REAL rendered pixel width of each edge, and
+        # `edge_width_legend_values` the semantic value (weight / p-value) behind
+        # it. Pair them index-wise, then for each tick fetch the width from the
+        # edge whose value is closest -- exactly how the node-size key works. This
+        # keeps the drawn width truthful for its label no matter how non-linear
+        # the value -> width mapping is (calculate_edge_width applies a 0.7 gamma,
+        # and in p-value mode width grows as p SHRINKS).
+        if (
+            edge_width_legend_values is not None
+            and len(edge_width_legend_values) == len(widths_arr)
+        ):
+            lvals = np.asarray(edge_width_legend_values, dtype=float)
+            ok = ~(np.isnan(widths_arr) | np.isnan(lvals))
+            widths_v, lvals_v = widths_arr[ok], lvals[ok]
+        else:
+            # No aligned values -> fall back to labeling with the width itself.
+            widths_v = widths_arr[~np.isnan(widths_arr)]
+            lvals_v = widths_v
+        if widths_v.size >= 2:
+            lo, hi = float(np.min(lvals_v)), float(np.max(lvals_v))
+            if edge_width_legend_logscale and lo > 0 and hi > 0:
+                # p-values: log-spaced, DESCENDING (largest p first) so the key
+                # reads thin -> thick left to right, i.e. the most significant
+                # (smallest p) edge carries the thickest sample line.
+                ticks = np.logspace(np.log10(hi), np.log10(lo), n_entries)
             else:
-                lo, hi = float(np.min(widths_arr)), float(np.max(widths_arr))
                 ticks = np.linspace(lo, hi, n_entries)
-                sample_labels = [f"{t:.3g}" for t in ticks]
-                sample_widths_px = list(ticks)
+            sample_labels = []
+            sample_widths_px = []
+            for t in ticks:
+                idx = int(np.argmin(np.abs(lvals_v - t)))
+                sample_labels.append(f"{t:.3g}")
+                sample_widths_px.append(float(widths_v[idx]))
 
             if sample_labels:
                 new_annotations.append(dict(
@@ -807,7 +1049,6 @@ def _add_size_width_legend(
                 # Sample line segments: paper-coord line shapes. Map
                 # the px width to a plotly line.width (we can use it
                 # directly because layout.shapes line.width IS in pixels).
-                max_w = max(sample_widths_px) if sample_widths_px else 1.0
                 for i, (lab, w) in enumerate(zip(sample_labels, sample_widths_px)):
                     xc = x_start + i * entry_spacing
                     half = 0.020  # half-length of the sample line in paper coords
@@ -819,7 +1060,11 @@ def _add_size_width_legend(
                         y0=current_y, y1=current_y,
                         line=dict(
                             color=edge_color,
-                            width=max(1.0, float(w)),
+                            # `w` is already the real rendered pixel width, so use
+                            # it verbatim -- no clamp (a max(1.0, ...) floor here
+                            # used to flatten every sample into an identical
+                            # hairline whenever the widths were sub-pixel).
+                            width=max(0.1, float(w)),
                         ),
                     ))
                     new_annotations.append(dict(
@@ -995,6 +1240,8 @@ def _export_figure_static(
     export_show_title=True,
     export_show_legend=True,
     background_color='white',
+    export_size=(1200, 1200),
+    export_autocrop=False,
 ):
     """Render ``fig`` to a static image file.
 
@@ -1106,8 +1353,48 @@ def _export_figure_static(
 
     print(f"Exporting {fmt.upper()} image...")
 
-    export_width = 1200
-    export_height = 900
+    # Export canvas. The default is SQUARE (1200x1200): it leaves even margins on
+    # both sides AND keeps the rendered 3D aspect stable across DPI. A NON-square
+    # canvas makes kaleido render the 3D scene with a scale-dependent aspect, so
+    # the brain's proportions change as you raise image_dpi (the "squished at high
+    # DPI" problem) -- hence the warning below.
+    export_width, export_height = (1200, 1200)
+    if export_size is not None:
+        try:
+            export_width, export_height = int(export_size[0]), int(export_size[1])
+        except (TypeError, ValueError, IndexError) as e:
+            raise ValueError(
+                f"`export_size` must be a (width, height) pair of positive "
+                f"integers; got {export_size!r}"
+            ) from e
+        if export_width < 1 or export_height < 1:
+            raise ValueError(
+                f"`export_size` width and height must both be >= 1; got {export_size!r}"
+            )
+    if export_width != export_height:
+        print(
+            f"Note: export_size={export_width}x{export_height} is NOT square. "
+            "Keep width == height if you plan to change image_dpi -- on a "
+            "non-square canvas the rendered 3D aspect varies with the DPI scale "
+            "factor, so the brain's proportions will shift between DPIs."
+        )
+
+    # The size-key dots are drawn in paper coords and were made circular for the
+    # figure's own aspect; re-derive their x-radius from the ACTUAL export aspect
+    # so they stay round at any canvas size (mirrors the multi-view panel fix-up).
+    _aspect = float(export_height) / float(export_width)
+    _dot_shapes = fig_dict['layout'].get('shapes') or []
+    _rescaled = False
+    for _s in _dot_shapes:
+        if isinstance(_s, dict) and (_s.get('name') or '').startswith('legend_size_dot_'):
+            _xc = (_s.get('x0', 0.0) + _s.get('x1', 0.0)) / 2.0
+            _ry = (_s.get('y1', 0.0) - _s.get('y0', 0.0)) / 2.0
+            _rx = _ry * _aspect
+            _s['x0'] = _xc - _rx
+            _s['x1'] = _xc + _rx
+            _rescaled = True
+    if _rescaled:
+        fig_export = go.Figure(fig_dict)
 
     try:
         fig_export.write_image(
@@ -1118,11 +1405,34 @@ def _export_figure_static(
             scale=scale,
         )
         if export_path.exists():
+            # Opt-in: trim the uniform background border so the figure frames its
+            # content tightly (no even margins). Off by default -- the square
+            # export canvas already gives even margins and a DPI-stable aspect.
+            # Raster only (kaleido SVG/PDF are vector); a pure crop, so aspect is
+            # never warped. The multi-view path does its own crop and is untouched.
+            if export_autocrop and fmt not in ['svg', 'pdf']:
+                try:
+                    from PIL import Image
+                    pil_bg, transparent = _bg_to_pil(background_color)
+                    pil_mode = 'RGBA' if transparent else 'RGB'
+                    im = Image.open(str(export_path)).convert(pil_mode)
+                    cropped = _autocrop_image(im, pil_bg, transparent,
+                                              pad=int(round(8 * scale)))
+                    if cropped.size != im.size:
+                        cropped.save(str(export_path), format=fmt.upper())
+                    im.close()
+                except Exception as e:
+                    print(f"  (autocrop skipped: {e})")
             file_size = export_path.stat().st_size
             print(f"Exported static image to: {export_path}")
             print(f"  Format: {fmt.upper()}, Size: {file_size/1024:.1f} KB")
             if fmt not in ['svg', 'pdf']:
-                print(f"  Dimensions: {int(export_width*scale)}x{int(export_height*scale)} pixels")
+                try:
+                    from PIL import Image as _PILImage
+                    with _PILImage.open(str(export_path)) as _im:
+                        print(f"  Dimensions: {_im.size[0]}x{_im.size[1]} pixels")
+                except Exception:
+                    print(f"  Dimensions: {int(export_width*scale)}x{int(export_height*scale)} pixels")
         else:
             print(f"ERROR: Export failed - file was not created at {export_path}")
     except Exception as e:
@@ -1167,6 +1477,8 @@ def create_brain_connectivity_plot(
     export_show_title: bool = True,
     export_show_legend: bool = True,
     background_color: str = 'white',
+    export_size: Tuple[int, int] = (1200, 1200),
+    export_autocrop: bool = False,
     edge_color_matrix: Optional[Union[str, np.ndarray, pd.DataFrame]] = None,
     matrix_type: str = 'weight',
     pvalue_threshold: float = 0.05,
@@ -2106,8 +2418,13 @@ def create_brain_connectivity_plot(
             dragmode='orbit',
             aspectmode='data'
         ),
-        width=1200,
-        height=900,
+        # Match the figure canvas to the export canvas. The size/width legend
+        # maps pixels <-> paper coords against fig.layout width/height, so if the
+        # figure were 1200x900 while the export renders 1200x1200 every legend
+        # offset would be stretched vertically (~1.4x) -- opening a dead gap
+        # between the brain and the keys and squeezing the brain's band.
+        width=export_size[0],
+        height=export_size[1],
         paper_bgcolor=_bg,
         plot_bgcolor=_bg,
         title={
@@ -2148,8 +2465,8 @@ def create_brain_connectivity_plot(
         'toImageButtonOptions': {
             'format': 'png',
             'filename': save_path.stem,
-            'height': 900,
-            'width': 1200,
+            'height': export_size[1],
+            'width': export_size[0],
             'scale': 2
         }
     }
@@ -2198,24 +2515,36 @@ def create_brain_connectivity_plot(
     width_for_legend = None
     width_legend_values = None
     width_legend_title = "Edge weight"
+    width_legend_logscale = False
     if show_width_legend and scale_edge_width and len(all_weights) >= 2:
-        # Use the absolute weight magnitudes (these are what drove the widths).
-        width_for_legend = np.abs(np.asarray(all_weights, dtype=float))
+        # The key's sample lines must be drawn at the ACTUAL rendered pixel
+        # widths, so run every weight through the same calculate_edge_width()
+        # the edge loop uses. This is what makes edge_width AND edge_width_scale
+        # show up in the legend (passing the raw weights here instead meant the
+        # key silently ignored both).
+        width_for_legend = np.array([
+            calculate_edge_width(w, all_weights, min_edge_width, max_edge_width)
+            for w in all_weights
+        ], dtype=float)
+        # Labels default to the raw weight behind each edge.
+        width_legend_values = np.abs(np.asarray(all_weights, dtype=float))
         if matrix_type == 'pvalue' and pvalue_lookup is not None:
-            # Pull the original p-values for the same set of edges out of
-            # pvalue_lookup. Edges live in the upper triangle so we walk
-            # the matrix once.
+            # Pull the original p-values for the SAME edges in the SAME order,
+            # using the identical filter chain that built all_weights -- otherwise
+            # the labels would not correspond to the widths.
             edge_pvals = []
             for i in range(conn_matrix.shape[0]):
                 for j in range(i + 1, conn_matrix.shape[1]):
-                    if (
-                        conn_matrix[i, j] != 0
-                        and abs(conn_matrix[i, j]) > edge_threshold
-                    ):
-                        edge_pvals.append(float(pvalue_lookup[i, j]))
-            if edge_pvals:
+                    weight = conn_matrix[i, j]
+                    if abs(weight) > edge_threshold and weight != 0:
+                        if i in G_all.nodes() and j in G_all.nodes():
+                            if edge_color_arr is not None and edge_color_arr[i, j] == "":
+                                continue
+                            edge_pvals.append(float(pvalue_lookup[i, j]))
+            if edge_pvals and len(edge_pvals) == len(width_for_legend):
                 width_legend_values = np.asarray(edge_pvals)
                 width_legend_title = "p-value"
+                width_legend_logscale = True
 
     if size_for_legend is not None or width_for_legend is not None:
         _add_size_width_legend(
@@ -2226,6 +2555,7 @@ def create_brain_connectivity_plot(
             edge_widths=width_for_legend,
             edge_width_legend_title=width_legend_title,
             edge_width_legend_values=width_legend_values,
+            edge_width_legend_logscale=width_legend_logscale,
             edge_color=pos_edge_color,
         )
 
@@ -2259,6 +2589,8 @@ def create_brain_connectivity_plot(
         export_show_title=export_show_title,
         export_show_legend=export_show_legend,
         background_color=background_color,
+        export_size=export_size,
+        export_autocrop=export_autocrop,
     )
 
     # Calculate graph statistics
@@ -2361,6 +2693,8 @@ def create_brain_connectivity_plot_with_modularity(
     export_show_title: bool = True,
     export_show_legend: bool = True,
     background_color: str = 'white',
+    export_size: Tuple[int, int] = (1200, 1200),
+    export_autocrop: bool = False,
     edge_color_matrix: Optional[Union[str, np.ndarray, pd.DataFrame]] = None,
     matrix_type: str = 'weight',
     pvalue_threshold: float = 0.05,
@@ -3417,8 +3751,8 @@ def create_brain_connectivity_plot_with_modularity(
         'toImageButtonOptions': {
             'format': 'png',
             'filename': save_path.stem,
-            'height': 900,
-            'width': 1200,
+            'height': export_size[1],
+            'width': export_size[0],
             'scale': 2
         }
     }
@@ -3445,6 +3779,8 @@ def create_brain_connectivity_plot_with_modularity(
         export_show_title=export_show_title,
         export_show_legend=export_show_legend,
         background_color=background_color,
+        export_size=export_size,
+        export_autocrop=export_autocrop,
     )
 
     return fig, graph_stats

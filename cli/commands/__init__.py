@@ -9,5 +9,6 @@ from . import coords
 from . import utils
 from . import config
 from . import combine
+from . import montage
 
-__all__ = ["plot", "modular", "batch", "coords", "utils", "config", "combine"]
+__all__ = ["plot", "modular", "batch", "coords", "utils", "config", "combine", "montage"]

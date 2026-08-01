@@ -1,9 +1,11 @@
 """
 Render the k5 (114-ROI) modularity *visualization types* for the docs.
 
-Uses the bundled human tutorial brain + the real k5 community-detection result
-(connectivity, module assignments, node metrics). For each of the 7 viz types it
-writes a 3-view multi-view PNG, a single superior-view PNG, and interactive HTML.
+Uses the bundled RAT tutorial brain (brain_mesh.gii) + the real k5
+community-detection result (connectivity, module assignments, node metrics). The
+114 region names are rodent (Accumbens_left, RSGc_left, S1_left, ...). For each of
+the 8 viz types it writes a 3-view multi-view PNG, a single superior-view PNG, and
+interactive HTML.
 
   PNGs  -> docs/images/figure_creation/k5/        (committed)
   HTMLs -> new_atlas_demo/k5_outputs/             (gitignored, local only)
@@ -22,7 +24,8 @@ from HarrisLabPlotting import load_mesh_file, create_brain_connectivity_plot_wit
 HERE = Path(__file__).resolve().parent
 TF = HERE.parent                                  # test_files/tutorial_files
 REPO = HERE.parents[2]
-IMGK = REPO / "docs" / "images" / "figure_creation" / "k5"
+from _figpaths import FIG_DPI, fig_root
+IMGK = fig_root(REPO) / "k5"
 IMGK.mkdir(parents=True, exist_ok=True)
 HTMLK = HERE / "k5_outputs"
 HTMLK.mkdir(parents=True, exist_ok=True)
@@ -37,20 +40,22 @@ MULTI_VIEW = ["left", "superior", "posterior"]
 
 # The 7 visualization types. `kw` holds the type-specific knobs.
 VIZ_TYPES = [
-    dict(key="default", title="k5 modularity — all edges",
+    dict(key="default", title="Modularity — all edges",
          kw=dict(viz_type="all")),
-    dict(key="all_inter_black", title="k5 modularity — all edges, inter-module black",
+    dict(key="all_inter_black", title="Modularity — all edges, inter-module black",
          kw=dict(viz_type="all", edge_color_mode="module", inter_edge_color="black")),
-    dict(key="intra", title="k5 modularity — intra-module edges only",
+    dict(key="intra", title="Modularity — intra-module edges only",
          kw=dict(viz_type="intra")),
-    dict(key="inter", title="k5 modularity — inter-module edges only",
+    dict(key="inter", title="Modularity — inter-module edges only",
          kw=dict(viz_type="inter")),
-    dict(key="inter_black", title="k5 modularity — inter-module edges only (black)",
+    dict(key="inter_black", title="Modularity — inter-module edges only (black)",
          kw=dict(viz_type="inter", edge_color_mode="module", inter_edge_color="black")),
-    dict(key="nodes_only", title="k5 modularity — nodes only",
+    dict(key="nodes_only", title="Modularity — nodes only",
          kw=dict(viz_type="nodes_only", show_width_legend=False)),
-    dict(key="nodal_roles", title="k5 — nodal roles (Guimera-Amaral)",
+    dict(key="nodal_roles", title="Nodal roles (Guimera-Amaral), no edges",
          kw=dict(viz_type="nodes_only", node_roles=True, show_width_legend=False)),
+    dict(key="nodal_roles_edges", title="Nodal roles (Guimera-Amaral) with edges",
+         kw=dict(viz_type="all", node_roles=True, show_width_legend=False)),
 ]
 
 
@@ -64,7 +69,7 @@ def main():
         connectivity_matrix=str(MATRIX),
         module_assignments=str(MODULES),
         node_metrics=str(METRICS),   # hover tooltips (+ required for nodal roles)
-        node_size=10, image_dpi=150,
+        node_size=10, image_dpi=FIG_DPI,
         show_node_labels=False,      # 114 nodes -> labels would be unreadable
     )
 
