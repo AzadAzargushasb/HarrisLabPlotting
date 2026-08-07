@@ -188,9 +188,10 @@ def export_multi_view_stitched_png(
         is applied. Default 800 x 800.
     image_dpi : int
         DPI for the output. Acts as a scale factor on the panel/strip
-        dimensions: each panel is rendered at ``scale = dpi / 72``,
-        capped at 8.0 (effective ~576 DPI). At ``image_dpi=300`` the
-        scale factor is ~4.17. At ``image_dpi=600`` it's ~8.0 (the cap).
+        dimensions: each panel is rendered at ``scale = dpi / 72`` (no hard
+        cap). At ``image_dpi=300`` the scale factor is ~4.17; at ``600`` it's
+        ~8.3. Very high values produce very large images (a warning is printed
+        past ~576 DPI) -- make sure you have enough memory.
     title : str
         Combined title text drawn above the strip. Empty string = no
         title bar.
@@ -319,10 +320,14 @@ def export_multi_view_stitched_png(
                 f"or remove some views."
             )
 
-    # Compute the scale factor used by kaleido for DPI. Cap at 8.0
-    # (effective ~576 DPI) -- enough for most publication needs while
-    # keeping memory usage reasonable for very large strips.
-    scale = min(image_dpi / 72.0, 8.0)
+    # Scale factor kaleido uses for DPI (no hard cap). Each panel renders at
+    # panel_width/height * scale. Very high DPI produces very large images; warn
+    # (advisory only) once past the old ~576-DPI comfort zone.
+    scale = image_dpi / 72.0
+    if scale > 8.0:
+        print(f"Note: image_dpi={image_dpi} (>{int(72*8)}) -> each panel is "
+              f"{int(panel_width*scale)}x{int(panel_height*scale)} px; the stitched "
+              f"strip will be very large -- ensure enough memory.")
     pwidth_px = int(panel_width * scale)
     pheight_px = int(panel_height * scale)
 
@@ -1347,9 +1352,12 @@ def _export_figure_static(
     if fmt in ['svg', 'pdf']:
         scale = 1.0
     else:
-        scale = min(image_dpi / 72.0, 8.0)
-        if image_dpi / 72.0 > 8.0:
-            print("Note: Scale capped at 8x (effective ~576 DPI) to avoid memory issues")
+        # No hard cap on DPI. Very high DPI produces very large images; warn
+        # (advisory only) once past the old ~576-DPI comfort zone.
+        scale = image_dpi / 72.0
+        if scale > 8.0:
+            print(f"Note: image_dpi={image_dpi} (>576) gives a {scale:.1f}x supersample "
+                  f"-> a very large image; ensure enough memory.")
 
     print(f"Exporting {fmt.upper()} image...")
 

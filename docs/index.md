@@ -72,8 +72,9 @@ Auto-generated reference for all public functions and classes.
 - **9 preset camera views** plus arbitrary custom angles
 - **5 mesh lighting presets** — flat, matte, smooth, glossy, mirror
 - **Modularity-aware** — color nodes and edges by module, with Guimerà–Amaral 7-role classification
-- **Statistical mode** — p-value matrices auto-transformed to −log₁₀(p) with significance thresholding
-- **Publication exports** — multi-view stitched PNG strips, vector SVG/PDF, configurable DPI
+- **Statistical mode** — p-value matrices auto-transformed to −log₁₀(p) with significance thresholding, signed red/blue edges, and edge-width + node-size significance scaling
+- **Publication exports** — multi-view stitched PNG strips, multi-mesh **montage grids** (`hlplot montage`), vector SVG/PDF, square DPI-stable export canvas, optional autocrop, and any background (incl. transparent)
+- **Cross-species figures** — compose different brain meshes (human / rat / macaque) into one labeled comparison grid
 - **Batch mode** — drive everything from a YAML config
 
 ## Install

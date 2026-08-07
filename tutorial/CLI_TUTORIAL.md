@@ -509,7 +509,7 @@ hlplot plot \
 | Flag | Description |
 |------|-------------|
 | `--export-image` | Output path. Extension determines format (.png, .svg, .pdf) |
-| `--image-dpi` | DPI for PNG. Max ~288 for memory safety. Default: 300 |
+| `--image-dpi` | DPI for PNG. No hard cap (very high = very large image). Default: 300 |
 | `--image-format` | Format if path has no extension |
 
 ### 8d. Custom / Transparent Background

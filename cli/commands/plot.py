@@ -261,7 +261,8 @@ def _parse_show_node_labels_arg(s):
 @click.option("--image-format", default="png", type=click.Choice(["png", "svg", "pdf"]),
               help="Image format if --export-image path has no extension. Default: png")
 @click.option("--image-dpi", default=300, type=int,
-              help="DPI for PNG export (max ~288 for memory safety). Default: 300")
+              help="DPI for PNG export (no hard cap; very high values make very "
+                   "large images and use more memory). Default: 300")
 @click.option("--export-show-title/--export-no-title", default=True,
               help="Include title in exported image. Default: show title")
 @click.option("--export-show-legend/--export-no-legend", default=True,

@@ -40,10 +40,12 @@ Both APIs cover the same feature set.
 - Accepts connectivity matrices as `.npy`, `.csv`, `.edge`, `.txt`, or `.mat`.
 
 **Export & automation**
-- Multi-view stitched PNG — re-render the same plot from N camera angles and stitch them into a 1×N strip in one call.
-- Clean publication export (`--export-no-title` / `--export-no-legend`) in PNG, SVG, or PDF.
+- Multi-view stitched PNG — re-render the same plot from N camera angles and stitch them into a 1×N (or R×C grid) strip in one call.
+- **Multi-mesh montage** — compose independently-rendered panels (e.g. one brain mesh per column of a cross-species figure) into one labeled grid with `hlplot montage` / `compose_image_grid`.
+- Clean publication export (`--export-no-title` / `--export-no-legend`) in PNG, SVG, or PDF; configurable **square export canvas** (`--export-size`, keeps the 3D aspect stable across DPI), optional tight crop (`--export-autocrop`), and any background incl. transparent (`--background-color`).
 - Batch mode driven by a YAML config (`hlplot batch`).
 - Utilities: matrix info/density, file-compatibility validation, matrix thresholding, format conversion.
+- **Worked figure-creation walkthrough** — cross-species comparison grids, p-value significance-scaled figures, and modularity viz-types. See [tutorial/FIGURE_CREATION.md](tutorial/FIGURE_CREATION.md).
 
 ---
 
@@ -358,7 +360,8 @@ for runnable snippets, flag explanations, and expected output.
 - **Basic connectivity plot** — `hlplot plot` / `create_brain_connectivity_plot`. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §4–5.
 - **Modularity plot** — `hlplot modular` / `create_brain_connectivity_plot_with_modularity`, Q/Z scores, edge-color modes. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §12.
 - **Node-role classification (PC + within-module Z-score)** — opt in with `--node-roles` (CLI) or `node_roles=True` (Python). Renders dual-layer node markers: a role-colored border ring (Connector Hub / Provincial Hub / Satellite Connector / Kinless / Peripheral / Ultra-peripheral) around the module-colored fill. Pairs with `--node-size-mode pc|zscore|both` for dynamic sizing and `--viz-type intra|inter|nodes_only` for edge filtering. Requires `--node-metrics` with `participation_coef` and `within_module_zscore` columns. Run `hlplot modular --help` for the full flag set.
-- **P-value matrix plotting** — `--matrix-type pvalue`, `--pvalue-threshold`, `--sign-matrix`. See [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md).
+- **P-value matrix plotting** — `--matrix-type pvalue`, `--pvalue-threshold`, `--sign-matrix` (positive effects red, negative/opposite-direction blue). See [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md).
+- **P-value significance scaling** — encode significance with edge width (`-log10(p)`) *and* a derived per-node size, contrasted against a uniform baseline. See [tutorial/FIGURE_CREATION.md](tutorial/FIGURE_CREATION.md) §6.
 - **Size + width legend keys** — auto-generated sample-dot / sample-line keys for vector sizes and scaled widths, labelable by metric. See [tutorial/legend key and 3 view display test.ipynb](tutorial/legend%20key%20and%203%20view%20display%20test.ipynb) §1–3.
 - **Mesh lighting presets** — `--mesh-style flat|matte|smooth|glossy|mirror` plus per-knob overrides. See [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md) §10.
 
@@ -368,8 +371,9 @@ for runnable snippets, flag explanations, and expected output.
 - **Brain mesh creation** — converting NIfTI volumes to `.gii` / `.obj` / `.ply` / `.mz3`. See [tutorial/MESH_CREATION_GUIDE.md](tutorial/MESH_CREATION_GUIDE.md).
 
 **Export & automation**
-- **Static image export** — `--export-image` for PNG/SVG/PDF via kaleido; `--export-no-title` / `--export-no-legend` for clean figures. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §8–9.
-- **Multi-view stitched PNG** — re-render N camera angles into a single 1×N strip via `--multi-view` / `export_multi_view_stitched_png`. See [tutorial/legend key and 3 view display test.ipynb](tutorial/legend%20key%20and%203%20view%20display%20test.ipynb) §4.
+- **Static image export** — `--export-image` for PNG/SVG/PDF via kaleido; `--export-no-title` / `--export-no-legend` for clean figures; `--export-size` (square canvas, DPI-stable aspect), `--export-autocrop` (tight crop), `--background-color` (named / hex / `transparent`). See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §8–9 and [tutorial/static export docs](docs/tutorials/static_export.md).
+- **Multi-view stitched PNG** — re-render N camera angles into a single 1×N or R×C grid via `--multi-view` / `export_multi_view_stitched_png`. See [tutorial/LEGEND_AND_MULTIVIEW_TUTORIAL.md](tutorial/LEGEND_AND_MULTIVIEW_TUTORIAL.md) §4.
+- **Multi-mesh montage grid** — `hlplot montage` / `compose_image_grid` compose pre-rendered panels (different meshes/species) into one labeled grid with column headers + per-cell labels. See [tutorial/FIGURE_CREATION.md](tutorial/FIGURE_CREATION.md) §5.
 - **Camera views + custom cameras** — 9 presets, `--custom-camera-eye/center/up`, live camera-readout overlay. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §14.
 - **Batch processing** — YAML-driven `hlplot batch --config` for many subjects / contrasts. Run `hlplot batch --help` for the full flag list.
 - **Utilities** — `hlplot utils info` / `validate` / `threshold` / `convert`. See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §6.
@@ -384,13 +388,13 @@ All names below are re-exported from `HarrisLabPlotting` and importable directly
 |---|---|---|
 | Mesh | `load_mesh_file` | Load `.gii` / `.obj` / `.ply` / `.mz3` → `(vertices, faces)`. |
 | Camera | `CameraController` | Manage 3D camera presets & custom eye/center/up views. |
-| Connectivity | `create_brain_connectivity_plot`, `create_brain_connectivity_plot_with_modularity`, `quick_brain_plot`, `export_multi_view_stitched_png` | Core plotting entry points. |
+| Connectivity | `create_brain_connectivity_plot`, `create_brain_connectivity_plot_with_modularity`, `quick_brain_plot`, `export_multi_view_stitched_png`, `compose_image_grid` | Core plotting entry points + multi-mesh grid composer. |
 | Modularity | `create_enhanced_modularity_visualization`, `create_interactive_camera_control_panel`, `run_enhanced_visualization_pipeline` | Advanced modularity layouts with PC/within-module-Z node roles. |
 | ROI coordinates | `coordinate_function`, `map_coordinate`, `load_and_clean_coordinates`, `load_matrix_replace_nan` | NIfTI → COG coords, subset mapping, CSV cleaning, matrix loading. |
 | Folder combining | `combine_edge_folder`, `combine_node_folder`, `combine_node_edge_folder` | Block-diagonal `.edge` + concatenated `.node` from a folder. |
 | P-value transform | `transform_pvalue_matrix` | Standalone `-log10(p)` transform with optional sign & threshold. |
 | Node/edge utilities | `load_node_file`, `load_edge_file`, `node_edge_to_roi_matrix`, `load_connectivity_input`, `load_node_metrics`, `load_edge_color_matrix` | Parsing helpers. |
-| Styling utilities | `calculate_node_size`, `calculate_edge_width`, `generate_module_colors`, `classify_node_role`, `threshold_matrix_top_n`, `filter_matrix_by_sign`, `filter_edges_by_module`, `convert_node_size_input`, `convert_node_color_input` | Shared helpers used by the plot functions. |
+| Styling utilities | `calculate_node_size`, `calculate_edge_width`, `generate_module_colors`, `classify_node_role`, `short_roi_name`, `threshold_matrix_top_n`, `filter_matrix_by_sign`, `filter_edges_by_module`, `convert_node_size_input`, `convert_node_color_input` | Shared helpers used by the plot functions (`short_roi_name` strips/abbreviates the hemisphere suffix for labels). |
 | Loaders | `NetNeurotoolsModularityLoader` | Read netneurotools modularity summary CSVs. |
 
 For full signatures, use `help(name)` in a Python shell or read the module source — [connectivity.py](connectivity.py), [modularity.py](modularity.py), [roi_coordinates.py](roi_coordinates.py), [utils.py](utils.py), [combine.py](combine.py), [loaders.py](loaders.py), [mesh.py](mesh.py), [camera.py](camera.py).
@@ -411,6 +415,7 @@ Run `hlplot <command> --help` for the full flag list of any sub-command.
 | `hlplot coords load` | Inspect / validate / stat a coords file. |
 | `hlplot coords extract` | Simple extraction without a labels file. |
 | `hlplot combine` | Combine paired `.node` / `.edge` files in a folder into block-diagonal totals (sub-commands: `node`, `edge`). |
+| `hlplot montage` | Compose pre-rendered PNGs into one labeled grid (e.g. a cross-species figure) with column/row headers and per-cell labels. |
 | `hlplot utils info` | Matrix shape, density, positive/negative edge counts, symmetry check. |
 | `hlplot utils validate` | Check mesh + coords + matrix are compatible. |
 | `hlplot utils threshold` | Threshold a matrix (by value, top-N, or percentile). |
@@ -426,6 +431,7 @@ Everything beyond the basics lives in [tutorial/](tutorial/):
 - [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) — every CLI flag demonstrated on the shipped 28- and 114-ROI tutorial data.
 - [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md) — p-value matrices, `-log10(p)` transform, signed p-values, per-edge color matrices.
 - [tutorial/LEGEND_AND_MULTIVIEW_TUTORIAL.md](tutorial/LEGEND_AND_MULTIVIEW_TUTORIAL.md) — size / width legend keys and multi-view stitched PNG export, with side-by-side Python + CLI examples.
+- [tutorial/FIGURE_CREATION.md](tutorial/FIGURE_CREATION.md) — end-to-end publication figures on new atlases: cross-species montage grids (`hlplot montage`), p-value significance scaling, and modularity viz-types / nodal roles.
 - [tutorial/MESH_CREATION_GUIDE.md](tutorial/MESH_CREATION_GUIDE.md) — converting a NIfTI volume into a brain mesh.
 - [tutorial/legend key and 3 view display test.ipynb](tutorial/legend%20key%20and%203%20view%20display%20test.ipynb) — runnable notebook version of the legend / multi-view tutorial.
 - [tutorial/pvalue plotting tutorial.ipynb](tutorial/pvalue%20plotting%20tutorial.ipynb) — runnable notebook version of the p-value tutorial.

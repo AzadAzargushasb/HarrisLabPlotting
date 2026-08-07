@@ -294,7 +294,8 @@ CLI face of `compose_image_grid`).
 This is a 2×3 grid: columns are the three species, and the six cells are the six
 canonical BrainNet views (row 1 = left / superior / right, row 2 = anterior /
 inferior / posterior). Each species shows a minimal module-colored network on its
-own mesh. Two versions are produced — one with ROI labels, one without.
+own mesh. Three versions are produced (labels off, full names, and short-form) —
+shown below.
 
 ```python
 import pandas as pd
@@ -362,50 +363,64 @@ reads as too zoomed in beside the others.*
 
 A p-value network can encode significance two ways at once: **edge width** by
 `-log10(p)` (built in via `--matrix-type pvalue`) and **node size** by a per-node
-significance you derive yourself. The figure below contrasts a flat baseline
-(uniform width + scalar size) with the fully scaled version.
+significance you derive yourself. Passing a `--sign-matrix` also colors each edge
+by **direction — red = positive, blue = negative (opposite-direction) effect**.
+The figure below contrasts a flat baseline (uniform width + scalar size) with the
+fully scaled version. It uses `pvalues_28_spread.csv` (significance spread over ~5
+orders of magnitude, so the widths span the full range) — see the
+[p-value tutorial](PVALUE_PLOTTING_TUTORIAL.md) for how that file is built.
 
 ```python
 import numpy as np, pandas as pd
 from HarrisLabPlotting import load_mesh_file, create_brain_connectivity_plot
 
+pvals = "node_edge_28/pvalues_28_spread.csv"
+signs = "node_edge_28/pvalues_28_signs.csv"   # +1/-1 direction -> red / blue
+
 # Per-node significance = sum of -log10(p) over each node's surviving edges.
-P = np.loadtxt("node_edge_28/pvalues_28.csv", delimiter=",")
+P = np.loadtxt(pvals, delimiter=",")
 thr = 0.05
 W = np.where((P > 0) & (P <= thr), -np.log10(np.clip(P, 1e-300, 1.0)), 0.0)
 np.fill_diagonal(W, 0.0)
 sig = W.sum(axis=1)
 node_px = 6 + (sig - sig.min()) / (sig.max() - sig.min()) * (24 - 6)   # -> [6, 24] px
 
-# (a) uniform baseline: fixed width + scalar size (no significance encoded)
-create_brain_connectivity_plot(
+common = dict(
     vertices=v, faces=f, roi_coords_df=coords,
-    connectivity_matrix="node_edge_28/pvalues_28.csv",
-    matrix_type="pvalue", pvalue_threshold=thr,
-    edge_width=2.0, node_size=8, camera_view="superior", image_dpi=600,
+    connectivity_matrix=pvals, matrix_type="pvalue", pvalue_threshold=thr,
+    sign_matrix=signs,            # red positive / blue negative
+    edge_width_scale=2, camera_view="superior", image_dpi=600)
+
+# (a) uniform baseline: fixed width + scalar size (direction still shown by color)
+create_brain_connectivity_plot(**common, edge_width=2.0, node_size=8,
     export_image="pval_uniform.png", save_path="pval_uniform.html")
 
 # (b) scaled: edge width ~ -log10(p), node size ~ per-node significance
-create_brain_connectivity_plot(
-    vertices=v, faces=f, roi_coords_df=coords,
-    connectivity_matrix="node_edge_28/pvalues_28.csv",
-    matrix_type="pvalue", pvalue_threshold=thr,
+create_brain_connectivity_plot(**common,
     edge_width=(1.0, 9.0), node_size=node_px,
     node_metrics=pd.DataFrame({"roi_name": coords["roi_name"], "node_significance": sig}),
     node_size_legend_metric="node_significance",
-    camera_view="superior", image_dpi=600,
     export_image="pval_scaled.png", save_path="pval_scaled.html")
 ```
+
+Single superior view:
 
 | Uniform (no scaling) | Significance-scaled edges + nodes |
 |---|---|
 | ![pval uniform](../docs/images/figure_creation/pvalue/pval_uniform.png) | ![pval scaled](../docs/images/figure_creation/pvalue/pval_scaled.png) |
 
-*Left: every edge and node identical. Right: thicker edges = smaller p (see the
-p-value width key), bigger nodes = higher summed significance (see the
-`node_significance` size key). The `PVALUE_THRESHOLD`, edge-width and size ranges
-are exposed at the top of `render_pvalue_scaling.py` / the notebook cell so they
-are easy to tweak.*
+Same figures as a 3-view multi-view strip (left / superior / posterior):
+
+| Uniform | Scaled |
+|---|---|
+| ![pval uniform multiview](../docs/images/figure_creation/pvalue/pval_uniform_multiview.png) | ![pval scaled multiview](../docs/images/figure_creation/pvalue/pval_scaled_multiview.png) |
+
+*Thicker edges = smaller p (see the p-value width key); bigger nodes = higher
+summed significance (see the `node_significance` size key); **red edges are
+positive, blue edges negative** (the legend splits into "Positive Edges" /
+"Negative Edges"). The `PVALUE_THRESHOLD`, edge-width and size ranges are exposed
+at the top of `render_pvalue_scaling.py` / the notebook cell so they are easy to
+tweak.*
 
 ---
 

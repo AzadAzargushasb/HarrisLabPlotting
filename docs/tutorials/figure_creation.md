@@ -375,7 +375,8 @@ and an optional title.
 The grid below is 2×3: columns are the three species, and the six cells are the
 six canonical BrainNet views (row 1 = left / superior / right, row 2 = anterior /
 inferior / posterior). Each species shows a minimal module-colored network on its
-own mesh. Two versions are produced — one with ROI labels, one without.
+own mesh. Three versions are produced (labels off, full names, and short-form) —
+shown below.
 
 ```python
 from HarrisLabPlotting import (
@@ -447,54 +448,70 @@ The full six-panel-per-version loop is in
 
 A p-value network can encode significance twice: **edge width** by `-log10(p)`
 (built in via `matrix_type="pvalue"`) and **node size** by a per-node significance
-you derive. The pair below contrasts a flat baseline with the fully scaled figure.
+you derive. A `sign_matrix` additionally colors each edge by **direction — red =
+positive, blue = negative** (opposite-direction) effect. The pair below contrasts a
+flat baseline with the fully scaled figure, using `pvalues_28_spread.csv`
+(significance spread over ~5 orders of magnitude so the widths span the full range).
 
 ```python
 import numpy as np, pandas as pd
 from HarrisLabPlotting import create_brain_connectivity_plot
 
+pvals = "node_edge_28/pvalues_28_spread.csv"
+signs = "node_edge_28/pvalues_28_signs.csv"   # +1/-1 direction -> red / blue
+
 # Per-node significance = sum of -log10(p) over each node's surviving edges.
-P = np.loadtxt("node_edge_28/pvalues_28.csv", delimiter=",")
+P = np.loadtxt(pvals, delimiter=",")
 thr = 0.05
 W = np.where((P > 0) & (P <= thr), -np.log10(np.clip(P, 1e-300, 1.0)), 0.0)
 np.fill_diagonal(W, 0.0)
 sig = W.sum(axis=1)
 node_px = 6 + (sig - sig.min()) / (sig.max() - sig.min()) * (24 - 6)   # -> [6, 24] px
 
-# (a) uniform baseline: fixed width + scalar size
-create_brain_connectivity_plot(
+common = dict(
     vertices=v, faces=f, roi_coords_df=coords,
-    connectivity_matrix="node_edge_28/pvalues_28.csv",
-    matrix_type="pvalue", pvalue_threshold=thr,
-    edge_width=2.0, node_size=8, camera_view="superior", image_dpi=600,
+    connectivity_matrix=pvals, matrix_type="pvalue", pvalue_threshold=thr,
+    sign_matrix=signs, edge_width_scale=2, camera_view="superior", image_dpi=600)
+
+# (a) uniform baseline: fixed width + scalar size (direction still shown by color)
+create_brain_connectivity_plot(**common, edge_width=2.0, node_size=8,
     export_image="pval_uniform.png", save_path="pval_uniform.html")
 
 # (b) scaled: edge width ~ -log10(p), node size ~ per-node significance
-create_brain_connectivity_plot(
-    vertices=v, faces=f, roi_coords_df=coords,
-    connectivity_matrix="node_edge_28/pvalues_28.csv",
-    matrix_type="pvalue", pvalue_threshold=thr,
+create_brain_connectivity_plot(**common,
     edge_width=(1.0, 9.0), node_size=node_px,
     node_metrics=pd.DataFrame({"roi_name": coords["roi_name"], "node_significance": sig}),
     node_size_legend_metric="node_significance",
-    camera_view="superior", image_dpi=600,
     export_image="pval_scaled.png", save_path="pval_scaled.html")
 ```
 
 ::::{grid} 1 2 2 2
 :::{grid-item}
 ![pval uniform](../images/figure_creation/pvalue/pval_uniform.png)
-*Uniform — no significance encoded.*
+*Uniform — direction (red/blue) only.*
 :::
 :::{grid-item}
 ![pval scaled](../images/figure_creation/pvalue/pval_scaled.png)
-*Scaled — thicker edges = smaller p, bigger nodes = higher summed significance.*
+*Scaled — width = smaller p, size = summed significance, red/blue = direction.*
 :::
 ::::
 
-The `PVALUE_THRESHOLD`, edge-width and size ranges are exposed at the top of
-`render_pvalue_scaling.py` (and the matching notebook cell) so they are easy to
-tweak. See also the [p-value plotting tutorial](pvalue_plotting.md).
+Same figures as a 3-view multi-view strip (left / superior / posterior):
+
+::::{grid} 1 2 2 2
+:::{grid-item}
+![pval uniform multiview](../images/figure_creation/pvalue/pval_uniform_multiview.png)
+:::
+:::{grid-item}
+![pval scaled multiview](../images/figure_creation/pvalue/pval_scaled_multiview.png)
+:::
+::::
+
+Red edges are positive, blue edges negative — the legend splits into "Positive
+Edges" / "Negative Edges". The `PVALUE_THRESHOLD`, edge-width and size ranges are
+exposed at the top of `render_pvalue_scaling.py` (and the matching notebook cell)
+so they are easy to tweak. See also the
+[p-value plotting tutorial](pvalue_plotting.md).
 
 ---
 

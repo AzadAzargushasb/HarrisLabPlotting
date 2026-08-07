@@ -45,6 +45,10 @@ HTML = Path(tempfile.mkdtemp(prefix="pvalue_scaling_"))
 MESH = TF / "brain_mesh.gii"
 COORDS = TF / "output" / "atlas_28_test_comma.csv"
 PVALUES = TF / "node_edge_28" / "pvalues_28_spread.csv"   # log-spread significance
+# Direction of each effect (+1/-1/0). Same edge topology as the p-value matrix,
+# so positive edges render red and negative (opposite-direction) edges render
+# blue. Of the 20 significant edges, 4 are negative.
+SIGN_MATRIX = TF / "node_edge_28" / "pvalues_28_signs.csv"
 
 # ----- Tweakable parameters (the notebook exposes the same knobs) -----------
 PVALUE_THRESHOLD = 0.05      # edges with p > threshold are dropped
@@ -102,6 +106,7 @@ def main():
         vertices=vertices, faces=faces, roi_coords_df=coords,
         connectivity_matrix=str(PVALUES),
         matrix_type="pvalue", pvalue_threshold=PVALUE_THRESHOLD,
+        sign_matrix=str(SIGN_MATRIX),   # -> red = positive, blue = negative direction
         image_dpi=IMAGE_DPI,
         edge_width_scale=EDGE_WIDTH_SCALE,
         show_node_labels=SHOW_NODE_LABELS,
