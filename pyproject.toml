@@ -72,3 +72,7 @@ package-dir = {"HarrisLabPlotting" = "."}
 
 [tool.setuptools.package-data]
 HarrisLabPlotting = ["*.yaml", "*.yml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
