@@ -526,6 +526,43 @@ def _parse_show_node_labels_arg(s):
                   "not a browser file -- especially with voxel overlays, "
                   "where the HTML is far larger than the PNG."
               ))
+# === Voxel-map overlays (see `hlplot volume` for the full set) ===
+@click.option("--volume", "-V", "volume_paths", multiple=True,
+              type=click.Path(exists=True),
+              help=("Overlay a statistical volume (.nii/.nii.gz) UNDER the "
+                    "network. Repeatable. The map must be in the same world "
+                    "space as the mesh -- check with `hlplot utils "
+                    "check-alignment`. For the full set of per-map controls "
+                    "use `hlplot volume`."))
+@click.option("--volume-spec", type=click.Path(exists=True),
+              help=("YAML file describing the overlay map(s); same format as "
+                    "`hlplot volume`. A CLI flag overrides the same key for "
+                    "every map in the file."))
+@click.option("--volume-cmap", "volume_cmaps", multiple=True,
+              help=("Colorscale per overlay, matched by position. 'hot32' "
+                    "(activation) and 'ice28' (deactivation) are built in; "
+                    "any plotly scale name also works."))
+@click.option("--volume-name", "volume_names", multiple=True,
+              help="Label for each overlay's colorbar, matched by position.")
+@click.option("--volume-threshold", "volume_thresholds", multiple=True,
+              type=float,
+              help=("Threshold per overlay, as an ABSOLUTE value in the map's "
+                    "own units (e.g. 3.1 for a z-map). Given once, applies to "
+                    "every overlay."))
+@click.option("--volume-smooth-fwhm", "volume_smooths", multiple=True,
+              help=("Gaussian blur FWHM in MILLIMETRES: one number, or "
+                    "'X,Y,Z' per axis. Pass the ORIGINAL pre-warp voxel size. "
+                    "Default: none."))
+@click.option("--volume-step", "volume_steps", multiple=True, type=int,
+              help=("Take every Nth voxel of the overlay grid. Nothing is "
+                    "downsampled by default and the projected cost is "
+                    "printed; a step of 5-7 is visually identical when "
+                    "smoothing."))
+@click.option("--volume-opacity", "volume_opacities", multiple=True,
+              type=float,
+              help=("Opacity ceiling of the VOXEL MAP, 0-1 (default 1.0). "
+                    "Lower it to ~0.6 so edges read through a bright cloud. "
+                    "This is not the brain -- that is --mesh-opacity."))
 # === Convenience ===
 @click.option("--show/--no-show", default=False,
               help="Open the HTML file in browser after creation.")
@@ -552,7 +589,10 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
          directed, matrix_orientation, symmetry_tol, arrow_view_mode,
          arrow_size, arrow_slenderness, arrow_max_edge_frac,
          arrow_min_radius_px, arc_bow_frac, arc_bow_floor,
-         arrow_darken, no_html):
+         arrow_darken, no_html,
+         volume_paths, volume_spec, volume_cmaps, volume_names,
+         volume_thresholds, volume_smooths, volume_steps,
+         volume_opacities):
     """
     Create an interactive 3D brain connectivity visualization.
 
@@ -835,6 +875,40 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
                 name=custom_camera_name,
             )
 
+        # ----- voxel-map overlays -------------------------------------
+        _vol_overlays = None
+        if volume_paths or volume_spec:
+            from HarrisLabPlotting.volume import load_volume_spec as _lvs
+
+            def _spread(vals, n, name):
+                if not vals:
+                    return [None] * n
+                if len(vals) == 1:
+                    return [vals[0]] * n
+                if len(vals) != n:
+                    raise click.BadParameter(
+                        f"{name} given {len(vals)} times but there are {n} "
+                        f"overlay volumes; give it once or once per volume.")
+                return list(vals)
+
+            _vspecs = list(_lvs(volume_spec)) if volume_spec else []
+            _vspecs += [{"path": p} for p in volume_paths]
+            _n = len(_vspecs)
+            _per = {
+                "cmap": _spread(volume_cmaps, _n, "--volume-cmap"),
+                "name": _spread(volume_names, _n, "--volume-name"),
+                "threshold": _spread(volume_thresholds, _n, "--volume-threshold"),
+                "smooth_fwhm": _spread(volume_smooths, _n, "--volume-smooth-fwhm"),
+                "step": _spread(volume_steps, _n, "--volume-step"),
+                "opacity": _spread(volume_opacities, _n, "--volume-opacity"),
+            }
+            for _i, _s in enumerate(_vspecs):
+                for _k, _v in _per.items():
+                    if _v[_i] is not None:
+                        _s[_k] = _v[_i]
+            _vol_overlays = _vspecs
+            print_info(f"Overlaying {_n} volume(s) under the network")
+
         print_info("Creating brain connectivity plot...")
 
         # Create the plot
@@ -894,6 +968,7 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
             multi_view_keep_first_legend=multi_view_keep_first_legend,
             multi_view_grid=multi_view_grid_val,
             zoom=zoom,
+            volume_overlays=_vol_overlays,
             directed=directed,
             matrix_orientation=matrix_orientation,
             symmetry_tol=symmetry_tol,
