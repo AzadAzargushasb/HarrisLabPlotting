@@ -70,11 +70,13 @@ Auto-generated reference for all public functions and classes.
 - **Plot from one command** — `hlplot plot --mesh brain.gii --coords rois.csv --matrix conn.npy`
 - **Interactive 3D** — Plotly HTML with rotate, zoom, hover tooltips, and toggleable legends
 - **9 preset camera views** plus arbitrary custom angles
-- **5 mesh lighting presets** — flat, matte, smooth, glossy, mirror
+- **6 mesh lighting presets** — flat, matte, smooth, glossy, glass, mirror
 - **Modularity-aware** — color nodes and edges by module, with Guimerà–Amaral 7-role classification
 - **Statistical mode** — p-value matrices auto-transformed to −log₁₀(p) with significance thresholding, signed red/blue edges, and edge-width + node-size significance scaling
 - **Publication exports** — multi-view stitched PNG strips, multi-mesh **montage grids** (`hlplot montage`), vector SVG/PDF, square DPI-stable export canvas, optional autocrop, and any background (incl. transparent)
 - **Cross-species figures** — compose different brain meshes (human / rat / macaque) into one labeled comparison grid
+- **Directed (causal) graphs** — asymmetric matrices get arrowheads automatically, with the source/target convention reported on every plot
+- **Voxel maps on a glass brain** — render a z/t/beta volume as a ray-cast cloud (`hlplot volume`), on its own or under a network
 - **Batch mode** — drive everything from a YAML config
 
 ## Install
@@ -124,6 +126,9 @@ tutorials/legends_and_multiview
 tutorials/static_export
 tutorials/batch_processing
 tutorials/figure_creation
+tutorials/directed_graphs
+tutorials/voxel_plotting
+tutorials/combined_voxel_network
 ```
 
 ```{toctree}

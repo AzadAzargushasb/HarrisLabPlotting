@@ -515,18 +515,121 @@ so they are easy to tweak. See also the
 
 ---
 
-## Reproduce everything
+---
+
+## 7. Directed networks
+
+An **asymmetric** matrix — DCM, Granger causality, transition probabilities —
+carries a different number in each direction, so `hlplot` draws arrowheads. It
+detects this automatically and reports the verdict on every plot.
+
+> **Which index is the source?** `hlplot` reads `M[i, j]` as **i → j** (row =
+> source). SPM DCM stores the transpose and needs
+> `--matrix-orientation col-to-row`; a row-stochastic transition matrix does
+> not. Getting this wrong reverses every arrow and nothing warns you — see
+> [DIRECTED_GRAPHS.md](directed_graphs.md) §1.
 
 ```bash
-cd test_files/tutorial_files/new_atlas_demo
-python generate_figure_data.py    # builds LUTs, coords, synthetic networks
-python render_figures.py          # human + monkey PNGs (600 DPI)
-python render_k5_viztypes.py      # k5 viz-type PNGs incl. nodal roles (+ local HTMLs)
-python render_species_grid.py     # cross-species montage (labeled + unlabeled)
-python generate_pvalue_spread.py  # builds pvalues_28_spread.csv (log-spread significance)
-python render_pvalue_scaling.py   # p-value uniform vs significance-scaled
+hlplot plot \
+  --mesh brain_mesh.gii \
+  --coords output/atlas_28_test_comma.csv \
+  --matrix node_edge_28/directed_28.csv \
+  --edge-width-min 1 --edge-width-max 9 \
+  --multi-view "left,superior,posterior" --zoom 1.3 \
+  --output new_atlas_demo/output/directed.html \
+  --export-image new_atlas_demo/output/directed_multiview.png
 ```
 
-The notebook
-[`tutorial/figure_creation_new_atlases.ipynb`](https://github.com/AzadAzargushasb/HarrisLabPlotting/blob/main/tutorial/figure_creation_new_atlases.ipynb)
-runs the same steps interactively.
+```python
+from HarrisLabPlotting import load_mesh_file, create_brain_connectivity_plot
+import pandas as pd
+
+vertices, faces = load_mesh_file("brain_mesh.gii")
+coords = pd.read_csv("output/atlas_28_test_comma.csv")
+
+fig, stats = create_brain_connectivity_plot(
+    vertices=vertices, faces=faces, roi_coords_df=coords,
+    connectivity_matrix="node_edge_28/directed_28.csv",
+    edge_width=(1.0, 9.0), zoom=1.3,
+    multi_view=["left", "superior", "posterior"],
+    save_path="directed.html", export_image="directed_multiview.png",
+)
+print(stats["symmetry"])
+```
+
+**Figure 8 — three views:**
+
+![Directed network, three views](../images/directed/02_multiview.png)
+
+**and the same network from a single superior view:**
+
+![Directed network, superior](../images/directed/01_quickstart_superior.png)
+
+*One-way edges are straight; reciprocal pairs bow to opposite sides so both
+directions keep their own width and arrowhead. Arrowheads scale with their own
+edge's width and are capped so a short edge never gets a head longer than
+itself.*
+
+---
+
+## 8. Voxel maps on a glass brain
+
+Statistical volumes render as a soft ray-cast cloud inside a translucent brain.
+The mouse Fig 1 z-maps ship under `test_files/tutorial_files/mouse/`.
+
+```bash
+hlplot volume \
+  --mesh mouse/bin_dilD_Parc_Atlas_0.obj \
+  --volume mouse/Fig1_RM_Sham_pos_z_allen.nii.gz \
+      --volume-cmap hot32 --volume-name Activation \
+  --volume mouse/Fig1_RM_Sham_neg_z_allen.nii.gz \
+      --volume-cmap ice28 --volume-name Deactivation \
+  --volume-threshold 3.1 --volume-smooth-fwhm "0.54,0.11,0.11" \
+  --volume-step 7 --zoom 1.25 \
+  --multi-view "left,superior,posterior" \
+  --no-html --export-image new_atlas_demo/output/voxels_multiview.png
+```
+
+```python
+from HarrisLabPlotting import create_brain_volume_plot
+
+create_brain_volume_plot(
+    mesh="mouse/bin_dilD_Parc_Atlas_0.obj",
+    volumes=[
+        dict(path="mouse/Fig1_RM_Sham_pos_z_allen.nii.gz", name="Activation",
+             cmap="hot32", threshold=3.1, smooth_fwhm="0.54,0.11,0.11", step=7),
+        dict(path="mouse/Fig1_RM_Sham_neg_z_allen.nii.gz", name="Deactivation",
+             cmap="ice28", threshold=3.1, smooth_fwhm="0.54,0.11,0.11", step=7),
+    ],
+    zoom=1.25, multi_view=["left", "superior", "posterior"],
+    no_html=True, export_image="voxels_multiview.png",
+)
+```
+
+**Figure 9 — three views:**
+
+![Voxel maps, three views](../images/voxel/02_multiview.png)
+
+**and a single superior view:**
+
+![Voxel maps, superior](../images/voxel/01_quickstart_superior.png)
+
+*`hot32` / `ice28` are matplotlib's `hot` truncated at 0.32 and a custom `ice`
+at 0.28 — the same colormaps as the study's 2-D coronal montages. The
+`--volume-smooth-fwhm` value is the ORIGINAL pre-warp voxel size, which is what
+removes the stair-steps left by resampling 16 thick slices onto a 25 µm grid.
+Full detail in [VOXEL_PLOTTING.md](voxel_plotting.md).*
+
+---
+
+*Reproduce everything: `python new_atlas_demo/generate_figure_data.py`, then
+`python new_atlas_demo/render_figures.py`,
+`python new_atlas_demo/render_k5_viztypes.py`,
+`python new_atlas_demo/render_species_grid.py`,
+`python new_atlas_demo/generate_pvalue_spread.py`,
+`python new_atlas_demo/render_pvalue_scaling.py`,
+`python new_atlas_demo/generate_directed_demo.py`,
+`python new_atlas_demo/render_directed.py`,
+`python new_atlas_demo/render_voxels.py`, and
+`python new_atlas_demo/render_combined.py`, or run
+`tutorial/figure_creation_new_atlases.ipynb`. All figures render at 600 DPI.*

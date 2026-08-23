@@ -33,6 +33,14 @@ test_files/tutorial_files/
 ├── output/                        # pre-generated coordinates (mesh order)
 │   ├── atlas_28_test_comma.csv    #   28-ROI COG coords
 │   └── atlas_114_test_comma.csv   #   114-ROI COG coords
+├── mouse/                        # mouse fUSI Fig 1 data, Allen 25 um space
+│   ├── bin_dilD_Parc_Atlas_0.obj #   the Allen surface (already in world mm)
+│   ├── Fig1_RM_Sham_pos_z_allen.nii.gz      #   activation z-map
+│   ├── Fig1_RM_Sham_neg_z_allen.nii.gz      #   deactivation z-map
+│   ├── Fig1_RM_Sham_combined_signed_z_allen.nii.gz
+│   ├── Fig1_RM_Sham_*_top10_allen.nii.gz    #   strongest-decile variants
+│   ├── ROI_Selected_Atlas_fill_dilD.nii.gz  #   146-label atlas (ROI coords)
+│   └── bin_ROI_Selected_Atlas_fill_dilD.nii.gz
 └── new_atlas_demo/                # figure-creation demo (see tutorial/FIGURE_CREATION.md)
     ├── generate_figure_data.py    #   builds the HCP-MMP1 / MacBNA LUTs + coords + nets
     ├── generate_pvalue_spread.py  #   builds pvalues_28_spread.csv (deterministic)
@@ -40,6 +48,10 @@ test_files/tutorial_files/
     ├── render_k5_viztypes.py      #   k5 modularity viz-types + nodal roles
     ├── render_species_grid.py     #   cross-species montage grid (3 label versions)
     ├── render_pvalue_scaling.py   #   p-value uniform vs significance-scaled (signed)
+    ├── generate_directed_demo.py  #   builds node_edge_28/directed_28.csv (deterministic)
+    ├── render_directed.py         #   directed-graph figures + arrow parameter sheets
+    ├── render_voxels.py           #   voxel maps on a glass brain + look parameter sheets
+    ├── render_combined.py         #   voxel cloud + network in one figure
     ├── _figpaths.py               #   150-DPI committed / 600-DPI publication switch
     ├── human/  monkey/            #   per-atlas coords + synthetic networks
     └── parcellation and meshes/   #   EXTERNAL atlas volumes/meshes (not committed)

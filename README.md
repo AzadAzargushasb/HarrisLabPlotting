@@ -31,7 +31,9 @@ Both APIs cover the same feature set.
 - Per-node sizing from CSV/NPY, per-node color from module assignments, hover-tooltip metrics, border colors.
 - Auto **size and width legend keys**, labelable by any column in a node-metrics file.
 - 9 camera presets plus fully-custom eye/center/up cameras, and a live camera-readout overlay for picking the right angle.
-- Mesh lighting presets (`flat` / `matte` / `smooth` / `glossy` / `mirror`) plus per-knob overrides.
+- Mesh lighting presets (`flat` / `matte` / `smooth` / `glossy` / `glass` / `mirror`) plus per-knob overrides.
+- **Directed (causal) graphs** — asymmetric matrices get arrowheads automatically, reciprocal pairs bow apart, and every plot reports its symmetry and the source/target convention in use.
+- **Voxel maps on a glass brain** — render a z/t/beta volume as a soft ray-cast cloud (`hlplot volume`), on its own or under a connectivity network.
 
 **Inputs & pre-processing**
 - NIfTI atlas → per-ROI center-of-gravity coordinates (`hlplot coords generate`).
@@ -44,7 +46,7 @@ Both APIs cover the same feature set.
 - **Multi-mesh montage** — compose independently-rendered panels (e.g. one brain mesh per column of a cross-species figure) into one labeled grid with `hlplot montage` / `compose_image_grid`.
 - Clean publication export (`--export-no-title` / `--export-no-legend`) in PNG, SVG, or PDF; configurable **square export canvas** (`--export-size`, keeps the 3D aspect stable across DPI), optional tight crop (`--export-autocrop`), and any background incl. transparent (`--background-color`).
 - Batch mode driven by a YAML config (`hlplot batch`).
-- Utilities: matrix info/density, file-compatibility validation, matrix thresholding, format conversion.
+- Utilities: matrix info/density, direction/stochastic detection, matrix transposing, file-compatibility validation, matrix thresholding, format conversion.
 - **Worked figure-creation walkthrough** — cross-species comparison grids, p-value significance-scaled figures, and modularity viz-types. See [tutorial/FIGURE_CREATION.md](tutorial/FIGURE_CREATION.md).
 
 ---
@@ -363,7 +365,10 @@ for runnable snippets, flag explanations, and expected output.
 - **P-value matrix plotting** — `--matrix-type pvalue`, `--pvalue-threshold`, `--sign-matrix` (positive effects red, negative/opposite-direction blue). See [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md).
 - **P-value significance scaling** — encode significance with edge width (`-log10(p)`) *and* a derived per-node size, contrasted against a uniform baseline. See [tutorial/FIGURE_CREATION.md](tutorial/FIGURE_CREATION.md) §6.
 - **Size + width legend keys** — auto-generated sample-dot / sample-line keys for vector sizes and scaled widths, labelable by metric. See [tutorial/legend key and 3 view display test.ipynb](tutorial/legend%20key%20and%203%20view%20display%20test.ipynb) §1–3.
-- **Mesh lighting presets** — `--mesh-style flat|matte|smooth|glossy|mirror` plus per-knob overrides. See [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md) §10.
+- **Mesh lighting presets** — `--mesh-style flat|matte|smooth|glossy|glass|mirror` plus per-knob overrides. See [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md) §10.
+- **Directed (causal) graphs** — an asymmetric matrix gets arrowheads automatically; reciprocal pairs bow apart so both directions stay readable; the symmetry verdict and the source/target convention are printed on every plot. **`M[i,j]` means i → j (row = source)** — SPM DCM stores the transpose and needs `--matrix-orientation col-to-row`, while a row-stochastic transition matrix does not. See [tutorial/DIRECTED_GRAPHS.md](tutorial/DIRECTED_GRAPHS.md).
+- **Voxel maps on a glass brain** — `hlplot volume` / `create_brain_volume_plot` renders a z/t/beta volume as a soft ray-cast cloud, with the study's own `hot32` / `ice28` colormaps, four threshold modes, per-axis smoothing and a volume-preserving level. See [tutorial/VOXEL_PLOTTING.md](tutorial/VOXEL_PLOTTING.md).
+- **Voxels under a network** — `volume_overlays=` / `--volume` on `hlplot plot` puts a voxel cloud and a connectivity network in one figure. See [tutorial/COMBINED_VOXEL_NETWORK.md](tutorial/COMBINED_VOXEL_NETWORK.md).
 
 **Inputs & pre-processing**
 - **ROI coordinate pipeline** — `hlplot coords generate` / `map-subset` / `load` / `extract` (Python: `coordinate_function`, `map_coordinate`, `load_and_clean_coordinates`). See [tutorial/CLI_TUTORIAL.md](tutorial/CLI_TUTORIAL.md) §2–3.
@@ -389,6 +394,8 @@ All names below are re-exported from `HarrisLabPlotting` and importable directly
 | Mesh | `load_mesh_file` | Load `.gii` / `.obj` / `.ply` / `.mz3` → `(vertices, faces)`. |
 | Camera | `CameraController` | Manage 3D camera presets & custom eye/center/up views. |
 | Connectivity | `create_brain_connectivity_plot`, `create_brain_connectivity_plot_with_modularity`, `quick_brain_plot`, `export_multi_view_stitched_png`, `compose_image_grid` | Core plotting entry points + multi-mesh grid composer. |
+| Directed graphs | `check_matrix_symmetry`, `apply_matrix_orientation`, `extract_directed_edges`, `build_directed_edge_traces`, `ARROW_DEFAULTS` | Symmetry reporting, row↔col orientation, and arrow geometry. `M[i,j]` means **i → j**. |
+| Volume plotting | `create_brain_volume_plot`, `load_volume_map`, `resolve_threshold`, `resolve_smoothing_fwhm`, `volume_preserving_level`, `get_colorscale`, `COLORSCALES`, `VOLUME_DEFAULTS` | Voxel maps on a glass brain; `volume_overlays=` puts them under a network. |
 | Modularity | `create_enhanced_modularity_visualization`, `create_interactive_camera_control_panel`, `run_enhanced_visualization_pipeline` | Advanced modularity layouts with PC/within-module-Z node roles. |
 | ROI coordinates | `coordinate_function`, `map_coordinate`, `load_and_clean_coordinates`, `load_matrix_replace_nan` | NIfTI → COG coords, subset mapping, CSV cleaning, matrix loading. |
 | Folder combining | `combine_edge_folder`, `combine_node_folder`, `combine_node_edge_folder` | Block-diagonal `.edge` + concatenated `.node` from a folder. |
@@ -416,7 +423,9 @@ Run `hlplot <command> --help` for the full flag list of any sub-command.
 | `hlplot coords extract` | Simple extraction without a labels file. |
 | `hlplot combine` | Combine paired `.node` / `.edge` files in a folder into block-diagonal totals (sub-commands: `node`, `edge`). |
 | `hlplot montage` | Compose pre-rendered PNGs into one labeled grid (e.g. a cross-species figure) with column/row headers and per-cell labels. |
-| `hlplot utils info` | Matrix shape, density, positive/negative edge counts, symmetry check. |
+| `hlplot volume` | Render a statistical volume (z/t/beta map) as a ray-cast cloud inside a glass brain. |
+| `hlplot utils info` | Matrix shape, density, edge counts, full direction report, and row/column-stochastic detection. |
+| `hlplot utils transpose` | Flip a matrix's direction convention (column→row becomes row→column). |
 | `hlplot utils validate` | Check mesh + coords + matrix are compatible. |
 | `hlplot utils threshold` | Threshold a matrix (by value, top-N, or percentile). |
 | `hlplot utils convert` | Convert between matrix file formats. |
@@ -432,6 +441,10 @@ Everything beyond the basics lives in [tutorial/](tutorial/):
 - [tutorial/PVALUE_PLOTTING_TUTORIAL.md](tutorial/PVALUE_PLOTTING_TUTORIAL.md) — p-value matrices, `-log10(p)` transform, signed p-values, per-edge color matrices.
 - [tutorial/LEGEND_AND_MULTIVIEW_TUTORIAL.md](tutorial/LEGEND_AND_MULTIVIEW_TUTORIAL.md) — size / width legend keys and multi-view stitched PNG export, with side-by-side Python + CLI examples.
 - [tutorial/FIGURE_CREATION.md](tutorial/FIGURE_CREATION.md) — end-to-end publication figures on new atlases: cross-species montage grids (`hlplot montage`), p-value significance scaling, and modularity viz-types / nodal roles.
+- [tutorial/DIRECTED_GRAPHS.md](tutorial/DIRECTED_GRAPHS.md) — directed/causal matrices: arrowheads, reciprocal pairs, and **which index is the source** (DCM needs transposing; row-stochastic transition matrices do not).
+- [tutorial/VOXEL_PLOTTING.md](tutorial/VOXEL_PLOTTING.md) — statistical volumes on a glass brain: thresholds, colormaps, smoothing, spec files, and what the grid costs.
+- [tutorial/COMBINED_VOXEL_NETWORK.md](tutorial/COMBINED_VOXEL_NETWORK.md) — voxel maps and a connectivity network in one figure.
+- [tutorial/ALIGNMENT_CHECKS.md](tutorial/ALIGNMENT_CHECKS.md) — pre-flight checks that an atlas, mesh and matrix actually fit together.
 - [tutorial/MESH_CREATION_GUIDE.md](tutorial/MESH_CREATION_GUIDE.md) — converting a NIfTI volume into a brain mesh.
 - [tutorial/legend key and 3 view display test.ipynb](tutorial/legend%20key%20and%203%20view%20display%20test.ipynb) — runnable notebook version of the legend / multi-view tutorial.
 - [tutorial/pvalue plotting tutorial.ipynb](tutorial/pvalue%20plotting%20tutorial.ipynb) — runnable notebook version of the p-value tutorial.
@@ -445,6 +458,8 @@ Everything beyond the basics lives in [tutorial/](tutorial/):
 HarrisLabPlotting/
 ├── __init__.py              Public Python API
 ├── connectivity.py          create_brain_connectivity_plot (+ p-value, multi-view)
+├── directed.py              Directed matrices: symmetry, orientation, arrowheads
+├── volume.py                Voxel maps on a glass brain (go.Volume ray-cast)
 ├── modularity.py            create_brain_connectivity_plot_with_modularity
 ├── mesh.py                  load_mesh_file (.gii / .obj / .ply / .mz3)
 ├── camera.py                CameraController, preset + custom views
@@ -454,8 +469,9 @@ HarrisLabPlotting/
 ├── utils.py                 Shared helpers (p-value transform, styling, I/O)
 ├── cli/
 │   ├── main.py              hlplot entry point
-│   └── commands/            plot, modular, batch, coords, utils, combine, config
+│   └── commands/            plot, modular, volume, batch, coords, utils, combine, config
 ├── tutorial/                Tutorials and example notebooks
+├── tests/                   pytest suite (symmetry, orientation, arrows, volumes)
 ├── test_files/tutorial_files/  Reproducible fixture data for every tutorial
 └── examples/                Additional example scripts
 ```

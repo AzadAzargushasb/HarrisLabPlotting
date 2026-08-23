@@ -12,11 +12,13 @@ the full signatures and docstrings.
 camera
 combine
 connectivity
+directed
 loaders
 mesh
 modularity
 roi_coordinates
 utils
+volume
 ```
 
 ## Top-level package

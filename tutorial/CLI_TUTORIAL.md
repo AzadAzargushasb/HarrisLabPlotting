@@ -88,8 +88,7 @@ Use `hlplot coords generate` to extract center-of-gravity (COG) coordinates from
 > `NaN`. `coords generate` rounds labels by default (`--round-labels`), so this
 > normally "just works". To check an atlas or pre-clean it:
 > `hlplot utils info --volume atlas.nii.gz` (reports whether labels are
-> bit-exact integers) and `hlplot utils clean-labels --volume atlas.nii.gz
-> --output atlas_int.nii.gz`. See
+> bit-exact integers) and `hlplot utils clean-labels --volume atlas.nii.gz --output atlas_int.nii.gz`. See
 > [ALIGNMENT_CHECKS.md](ALIGNMENT_CHECKS.md) for the full set of pre-flight
 > checks (float labels, wrong template space, midline-collapsed atlases).
 
@@ -106,18 +105,19 @@ hlplot coords generate \
 ### Expected Output
 
 Creates three files in `output/`:
+
 - `my_170_coordinates_comma.csv` - Comma-delimited (use for plotting)
 - `my_170_coordinates_tab.csv` - Tab-delimited
 - `my_170_coordinates.pkl` - Python pickle
 
 ### Flag Explanations
 
-| Flag | Short | Required | Description |
-|------|-------|----------|-------------|
-| `--volume` | `-v` | Yes | NIfTI file containing integer ROI labels (1-N) |
-| `--labels` | `-l` | Yes | Text file mapping label numbers to names. Format: `1\tROI_Name` |
-| `--output-dir` | `-o` | Yes | Directory where output files will be saved |
-| `--name` | `-n` | No | Base name for output files. Default: `roi_coordinates` |
+| Flag             | Short  | Required | Description                                                      |
+| ---------------- | ------ | -------- | ---------------------------------------------------------------- |
+| `--volume`     | `-v` | Yes      | NIfTI file containing integer ROI labels (1-N)                   |
+| `--labels`     | `-l` | Yes      | Text file mapping label numbers to names. Format:`1\tROI_Name` |
+| `--output-dir` | `-o` | Yes      | Directory where output files will be saved                       |
+| `--name`       | `-n` | No       | Base name for output files. Default:`roi_coordinates`          |
 
 ### Label File Format
 
@@ -141,10 +141,10 @@ When your connectivity matrix has fewer ROIs than your full atlas, use `hlplot c
 
 ### Understanding `map` vs `map-subset`
 
-| Command | Purpose |
-|---------|---------|
-| `coords map` | Transform coordinates: rename columns, apply scaling |
-| `coords map-subset` | Extract a subset of ROIs by matching names |
+| Command               | Purpose                                              |
+| --------------------- | ---------------------------------------------------- |
+| `coords map`        | Transform coordinates: rename columns, apply scaling |
+| `coords map-subset` | Extract a subset of ROIs by matching names           |
 
 ### Example A: Map 170 → 28 ROIs (using .node file)
 
@@ -178,26 +178,27 @@ All ROIs were successfully mapped!
 ```
 
 Creates (in a subdirectory with the same name):
+
 - `output/atlas_28_mapped/atlas_28_mapped_comma.csv`
 - `output/atlas_28_mapped/atlas_28_mapped_tab.csv`
 - `output/atlas_28_mapped/atlas_28_mapped.pkl`
 
 ### Flag Explanations
 
-| Flag | Short | Required | Description |
-|------|-------|----------|-------------|
-| `--coords` | `-c` | Yes | Full coordinates CSV file (source atlas) |
-| `--subset` | `-s` | Yes | Subset definition. Supports: `.node`, `.txt`, `.csv` |
-| `--output-dir` | `-o` | Yes | Output directory |
-| `--name` | `-n` | No | Output file name. Default: `mapped_roi_coordinates` |
+| Flag             | Short  | Required | Description                                               |
+| ---------------- | ------ | -------- | --------------------------------------------------------- |
+| `--coords`     | `-c` | Yes      | Full coordinates CSV file (source atlas)                  |
+| `--subset`     | `-s` | Yes      | Subset definition. Supports:`.node`, `.txt`, `.csv` |
+| `--output-dir` | `-o` | Yes      | Output directory                                          |
+| `--name`       | `-n` | No       | Output file name. Default:`mapped_roi_coordinates`      |
 
 ### Supported Subset File Formats
 
-| Format | Description |
-|--------|-------------|
+| Format    | Description                                         |
+| --------- | --------------------------------------------------- |
 | `.node` | BrainNet Viewer format. Uses last column (ROI name) |
-| `.txt` | One ROI name per line, or `index\tname` format |
-| `.csv` | CSV with `roi_name` column |
+| `.txt`  | One ROI name per line, or`index\tname` format     |
+| `.csv`  | CSV with`roi_name` column                         |
 
 ---
 
@@ -245,18 +246,18 @@ hlplot plot \
 
 ### Flag Explanations
 
-| Flag | Description |
-|------|-------------|
-| `--mesh`, `-m` | Brain mesh file (.gii, .obj, .mz3, .ply) |
-| `--coords`, `-c` | ROI coordinates CSV (columns: cog_x, cog_y, cog_z, roi_name) |
-| `--matrix`, `-x` | Connectivity matrix (.npy, .csv, .edge, .txt, .mat) |
-| `--output`, `-o` | Output HTML file |
-| `--title`, `-t` | Plot title |
-| `--node-size` | Node size (number or CSV file path) |
-| `--edge-width-min` | Minimum edge width when scaling |
-| `--edge-width-max` | Maximum edge width when scaling |
-| `--camera` | View: oblique, anterior, posterior, left, right, superior, inferior |
-| `--hide-nodes-with-hidden-edges` | Hide nodes when their edges are hidden |
+| Flag                               | Description                                                         |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| `--mesh`, `-m`                 | Brain mesh file (.gii, .obj, .mz3, .ply)                            |
+| `--coords`, `-c`               | ROI coordinates CSV (columns: cog_x, cog_y, cog_z, roi_name)        |
+| `--matrix`, `-x`               | Connectivity matrix (.npy, .csv, .edge, .txt, .mat)                 |
+| `--output`, `-o`               | Output HTML file                                                    |
+| `--title`, `-t`                | Plot title                                                          |
+| `--node-size`                    | Node size (number or CSV file path)                                 |
+| `--edge-width-min`               | Minimum edge width when scaling                                     |
+| `--edge-width-max`               | Maximum edge width when scaling                                     |
+| `--camera`                       | View: oblique, anterior, posterior, left, right, superior, inferior |
+| `--hide-nodes-with-hidden-edges` | Hide nodes when their edges are hidden                              |
 
 ---
 
@@ -291,8 +292,8 @@ hlplot plot \
 
 ### Flag Explanations
 
-| Flag | Description |
-|------|-------------|
+| Flag               | Description                                                          |
+| ------------------ | -------------------------------------------------------------------- |
 | `--node-metrics` | CSV with node metrics. All columns shown on hover. One row per node. |
 
 ---
@@ -324,6 +325,7 @@ hlplot utils info --matrix node_edge_28/connectivity_28.edge
 ```
 
 **Output shows:**
+
 - Shape, non-zero values, density
 - Min/max values, positive/negative edge counts
 - Symmetry check
@@ -364,11 +366,11 @@ row-for-row with the coords CSV, so it can be passed directly to
 The `--coords` reference can be **any atlas size** — 114, 170, or a
 custom list you generated yourself — as long as:
 
-| Constraint | Failure mode |
-|---|---|
-| `len(coords) ≥ len(node)` (coords has ≥ as many ROIs as the node file) | `Coords CSV has X ROIs but .node file has Y` |
-| `edge.shape == (len(node), len(node))` | `Edge matrix has X rows but .node file has Y entries` |
-| Every `roi_name` in the `.node` file appears in `coords`' `roi_name` column | `The following ROI names from the node file were not found in the ROI reference: [...]` |
+| Constraint                                                                         | Failure mode                                                                              |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `len(coords) ≥ len(node)` (coords has ≥ as many ROIs as the node file)         | `Coords CSV has X ROIs but .node file has Y`                                            |
+| `edge.shape == (len(node), len(node))`                                           | `Edge matrix has X rows but .node file has Y entries`                                   |
+| Every`roi_name` in the `.node` file appears in `coords`' `roi_name` column | `The following ROI names from the node file were not found in the ROI reference: [...]` |
 
 #### Copy-Paste Command
 
@@ -405,12 +407,12 @@ hlplot plot \
 
 #### Flag Explanations
 
-| Flag | Short | Required | Description |
-|------|-------|----------|-------------|
-| `--node` | `-n` | Yes | BrainNet Viewer node file (`.node`, 8-column) |
-| `--edge` | `-e` | Yes | BrainNet Viewer edge file (`.edge`, square matrix) |
-| `--coords` | `-c` | Yes | Full ROI coordinates CSV with a `roi_name` column |
-| `--output` | `-o` | Yes | Output matrix path (`.csv` or `.npy`) |
+| Flag         | Short  | Required | Description                                          |
+| ------------ | ------ | -------- | ---------------------------------------------------- |
+| `--node`   | `-n` | Yes      | BrainNet Viewer node file (`.node`, 8-column)      |
+| `--edge`   | `-e` | Yes      | BrainNet Viewer edge file (`.edge`, square matrix) |
+| `--coords` | `-c` | Yes      | Full ROI coordinates CSV with a`roi_name` column   |
+| `--output` | `-o` | Yes      | Output matrix path (`.csv` or `.npy`)            |
 
 #### Note: name-overlap is required
 
@@ -445,9 +447,9 @@ hlplot plot \
 
 ### Flag Explanations
 
-| Flag | Description |
-|------|-------------|
-| `--edge-width-fixed` | Fixed width for ALL edges. Ignores `--edge-width-min/max`. |
+| Flag                   | Description                                                 |
+| ---------------------- | ----------------------------------------------------------- |
+| `--edge-width-fixed` | Fixed width for ALL edges. Ignores`--edge-width-min/max`. |
 
 ---
 
@@ -506,11 +508,11 @@ hlplot plot \
 
 ### Flag Explanations
 
-| Flag | Description |
-|------|-------------|
-| `--export-image` | Output path. Extension determines format (.png, .svg, .pdf) |
-| `--image-dpi` | DPI for PNG. No hard cap (very high = very large image). Default: 300 |
-| `--image-format` | Format if path has no extension |
+| Flag               | Description                                                           |
+| ------------------ | --------------------------------------------------------------------- |
+| `--export-image` | Output path. Extension determines format (.png, .svg, .pdf)           |
+| `--image-dpi`    | DPI for PNG. No hard cap (very high = very large image). Default: 300 |
+| `--image-format` | Format if path has no extension                                       |
 
 ### 8d. Custom / Transparent Background
 
@@ -545,8 +547,8 @@ hlplot plot \
 a checkerboard so the transparency is visible). Works for single views and
 multi-view stitched strips, and the same flag exists on `hlplot modular`.*
 
-| Flag | Description |
-|------|-------------|
+| Flag                   | Description                                                                                                    |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `--background-color` | Background color: a name, hex (`#1e1e1e`), or `transparent`. Applies to HTML + export. Default: `white`. |
 
 ---
@@ -576,10 +578,10 @@ hlplot plot ... --export-image brain.png --export-autocrop
 
 #### Flag Explanations
 
-| Flag | Description |
-|------|-------------|
-| `--export-size` | Export canvas as `'width,height'`. Default `'1200,1200'`. Keep it square if you change `--image-dpi`. |
-| `--export-autocrop` / `--no-export-autocrop` | Trim the background border tight to the content. Default **off** (even margins). Pure crop — never warps the aspect. Raster only; multi-view already crops per panel. |
+| Flag                                             | Description                                                                                                                                                                 |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--export-size`                                | Export canvas as`'width,height'`. Default `'1200,1200'`. Keep it square if you change `--image-dpi`.                                                                  |
+| `--export-autocrop` / `--no-export-autocrop` | Trim the background border tight to the content. Default**off** (even margins). Pure crop — never warps the aspect. Raster only; multi-view already crops per panel. |
 
 ---
 
@@ -642,9 +644,9 @@ hlplot plot \
 
 ### Flag Explanations
 
-| Flag | Description |
-|------|-------------|
-| `--export-no-title` | Exclude title from exported image |
+| Flag                   | Description                        |
+| ---------------------- | ---------------------------------- |
+| `--export-no-title`  | Exclude title from exported image  |
 | `--export-no-legend` | Exclude legend from exported image |
 
 ---
@@ -709,10 +711,10 @@ hlplot plot \
 
 ### Flag Explanations
 
-| Flag | Description |
-|------|-------------|
-| `--node-color` | Accepts: color name, hex code, or CSV path with module assignments |
-| `--node-border-color` | Border color for nodes |
+| Flag                    | Description                                                        |
+| ----------------------- | ------------------------------------------------------------------ |
+| `--node-color`        | Accepts: color name, hex code, or CSV path with module assignments |
+| `--node-border-color` | Border color for nodes                                             |
 
 ### Module CSV Format
 
@@ -806,11 +808,11 @@ hlplot modular \
 
 ### Flag Explanations
 
-| Flag | Description |
-|------|-------------|
-| `--modules`, `-d` | Module assignments file (required) |
-| `--q-score` | Modularity Q score for title |
-| `--z-score` | Z-rand score for title |
+| Flag                  | Description                                        |
+| --------------------- | -------------------------------------------------- |
+| `--modules`, `-d` | Module assignments file (required)                 |
+| `--q-score`         | Modularity Q score for title                       |
+| `--z-score`         | Z-rand score for title                             |
 | `--edge-color-mode` | `sign` (red/blue) or `module` (by source node) |
 
 ---
@@ -865,11 +867,11 @@ hlplot plot \
 
 ### Node Size Input Options
 
-| Input Type | Example | Description |
-|------------|---------|-------------|
-| Single number | `--node-size 10` | All nodes same size |
-| CSV file | `--node-size sizes.csv` | One size per node (first column) |
-| NPY file | `--node-size sizes.npy` | NumPy array with sizes |
+| Input Type    | Example                   | Description                      |
+| ------------- | ------------------------- | -------------------------------- |
+| Single number | `--node-size 10`        | All nodes same size              |
+| CSV file      | `--node-size sizes.csv` | One size per node (first column) |
+| NPY file      | `--node-size sizes.npy` | NumPy array with sizes           |
 
 ---
 
@@ -884,11 +886,11 @@ independent of this flag.
 
 The flag accepts three forms:
 
-| Form | Effect |
-|------|--------|
-| `--show-node-labels true` *(default)* | Every ROI gets a persistent label. |
-| `--show-node-labels false` | No persistent labels; hover still reveals names. |
-| `--show-node-labels path/to/mask.csv` | Per-node 0/1 mask — `1` shows the label, `0` hides it. |
+| Form                                      | Effect                                                     |
+| ----------------------------------------- | ---------------------------------------------------------- |
+| `--show-node-labels true` *(default)* | Every ROI gets a persistent label.                         |
+| `--show-node-labels false`              | No persistent labels; hover still reveals names.           |
+| `--show-node-labels path/to/mask.csv`   | Per-node 0/1 mask —`1` shows the label, `0` hides it. |
 
 The same flag exists on `hlplot modular`, with identical semantics.
 
@@ -1114,19 +1116,18 @@ hlplot montage \
 
 ### Flag Explanations (`hlplot montage`)
 
-| Flag | Description |
-|------|-------------|
-| `--images` / `-i` | Comma-separated panel PNG paths, in **row-major** order (left-to-right, then top-to-bottom). |
-| `--grid` | Grid shape `'rows,cols'` (e.g. `'2,3'`). Omit for a single row. `rows*cols` must be ≥ the number of images. |
-| `--col-labels` | One header per column, drawn once along the top. |
-| `--row-labels` | One label per row, drawn in a left gutter. |
-| `--panel-labels` | One label per image, drawn below each panel. |
-| `--title` | Combined title above the whole grid. |
-| `--background-color` | Named color, hex, or `transparent` (RGBA output). |
-| `--no-autocrop` | Keep each panel's original border instead of trimming it. |
+| Flag                   | Description                                                                                                       |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `--images` / `-i`  | Comma-separated panel PNG paths, in**row-major** order (left-to-right, then top-to-bottom).                 |
+| `--grid`             | Grid shape`'rows,cols'` (e.g. `'2,3'`). Omit for a single row. `rows*cols` must be ≥ the number of images. |
+| `--col-labels`       | One header per column, drawn once along the top.                                                                  |
+| `--row-labels`       | One label per row, drawn in a left gutter.                                                                        |
+| `--panel-labels`     | One label per image, drawn below each panel.                                                                      |
+| `--title`            | Combined title above the whole grid.                                                                              |
+| `--background-color` | Named color, hex, or`transparent` (RGBA output).                                                                |
+| `--no-autocrop`      | Keep each panel's original border instead of trimming it.                                                         |
 
-The Python equivalent is `compose_image_grid(images, output, grid=(2,3),
-col_labels=[...], panel_labels=[...])`. See
+The Python equivalent is `compose_image_grid(images, output, grid=(2,3), col_labels=[...], panel_labels=[...])`. See
 [FIGURE_CREATION.md](FIGURE_CREATION.md) for the full human/rat/macaque example.
 
 ---
@@ -1209,17 +1210,17 @@ hlplot utils convert --help    # Convert file formats
 
 ### Camera View Presets
 
-| View | Description |
-|------|-------------|
-| `oblique` | Default angled view |
-| `anterior` | Front view |
-| `posterior` | Back view |
-| `left` | Left side |
-| `right` | Right side |
-| `superior` | Top (dorsal) |
-| `inferior` | Bottom (ventral) |
-| `lateral-left` | Left lateral |
-| `lateral-right` | Right lateral |
+| View              | Description         |
+| ----------------- | ------------------- |
+| `oblique`       | Default angled view |
+| `anterior`      | Front view          |
+| `posterior`     | Back view           |
+| `left`          | Left side           |
+| `right`         | Right side          |
+| `superior`      | Top (dorsal)        |
+| `inferior`      | Bottom (ventral)    |
+| `lateral-left`  | Left lateral        |
+| `lateral-right` | Right lateral       |
 
 ---
 
