@@ -31,6 +31,15 @@ from .utils import (
     transform_pvalue_matrix,
     resolve_show_node_labels,
 )
+from .directed import (
+    ARROW_DEFAULTS,
+    apply_matrix_orientation,
+    build_directed_edge_traces,
+    check_matrix_symmetry,
+    estimate_units_per_pixel,
+    extract_directed_edges,
+    format_symmetry_report,
+)
 
 
 # ----------------------------------------------------------------------
@@ -59,6 +68,14 @@ MESH_LIGHTING_PRESETS: Dict[str, Dict[str, float]] = {
         # Balanced -- a tiny bit of specular and a hint of fresnel rim.
         ambient=0.4, diffuse=0.8, specular=0.3, roughness=0.7, fresnel=0.2,
     ),
+    # 'glass' is tuned for a translucent shell you look THROUGH: low diffuse
+    # so the surface does not paint over what is inside it, and a strong
+    # fresnel so the rim still reads as a surface. Pair with a low
+    # mesh_opacity (--glass sets 0.12).
+    'glass': dict(
+        ambient=0.55, diffuse=0.45, specular=0.30, roughness=0.55, fresnel=1.40,
+    ),
+
     'glossy': dict(
         # Sharp specular highlight + visible rim light. The "shiny plastic"
         # look most users mean when they say "glossy".
@@ -1510,6 +1527,20 @@ def create_brain_connectivity_plot(
     multi_view_grid: Optional[Tuple[int, int]] = None,
     zoom: float = 1.0,
     show_node_labels: Union[bool, np.ndarray, pd.Series, List, str, None] = True,
+    directed: Optional[bool] = None,
+    matrix_orientation: str = 'row-to-col',
+    symmetry_tol: Optional[float] = None,
+    arrow_view_mode: str = 'camera',
+    arrow_size: float = ARROW_DEFAULTS['k_width'],
+    arrow_slenderness: float = ARROW_DEFAULTS['slenderness'],
+    arrow_max_edge_frac: float = ARROW_DEFAULTS['max_edge_frac'],
+    arrow_min_radius_px: float = ARROW_DEFAULTS['min_radius_px'],
+    arc_bow_frac: float = ARROW_DEFAULTS['bow_chord_frac'],
+    arc_bow_floor: float = ARROW_DEFAULTS['bow_floor_frac'],
+    arrow_darken: float = ARROW_DEFAULTS['darken'],
+    arrow_params: Optional[Dict] = None,
+    no_html: bool = False,
+    _report_symmetry: bool = True,
 ):
     """
     Create an interactive 3D brain connectivity visualization.
@@ -1815,6 +1846,14 @@ def create_brain_connectivity_plot(
     conn_matrix = load_connectivity_input(connectivity_matrix, n_expected_nodes=len(roi_coords_df))
     print(f"Connectivity matrix shape: {conn_matrix.shape}")
 
+    # ----- matrix orientation -----------------------------------------
+    # M[i, j] means i -> j (row = SOURCE, column = TARGET), the numpy /
+    # networkx convention. SPM's DCM stores the transpose (A(i,j) is the
+    # connection FROM j TO i), so those matrices need 'col-to-row', which
+    # flips them here -- before the p-value transform, so a sign matrix is
+    # flipped along with them.
+    conn_matrix = apply_matrix_orientation(conn_matrix, matrix_orientation)
+
     # ----- p-value mode -----------------------------------------------
     # If matrix_type='pvalue', interpret conn_matrix as a p-value matrix
     # and convert it (via -log10) into a signed weight matrix that the
@@ -1830,6 +1869,7 @@ def create_brain_connectivity_plot(
             sign_arr = load_connectivity_input(
                 sign_matrix, n_expected_nodes=conn_matrix.shape[0]
             )
+            sign_arr = apply_matrix_orientation(sign_arr, matrix_orientation)
         weight_matrix, pvalue_lookup = transform_pvalue_matrix(
             conn_matrix,
             pvalue_threshold=pvalue_threshold,
@@ -1842,6 +1882,19 @@ def create_brain_connectivity_plot(
             + (" (signed)" if sign_arr is not None else "")
         )
         conn_matrix = weight_matrix
+
+    # ----- symmetry / directed decision --------------------------------
+    # Reported on EVERY plot, symmetric or not, so a directed matrix can
+    # never be silently halved and the orientation in use is always stated.
+    symmetry_report = check_matrix_symmetry(
+        conn_matrix, tol=symmetry_tol, orientation=matrix_orientation
+    )
+    draw_directed = (
+        symmetry_report['directed'] if directed is None else bool(directed)
+    )
+    if _report_symmetry:
+        print(format_symmetry_report(symmetry_report,
+                                     drawing_directed=draw_directed))
 
     # ----- per-edge color matrix --------------------------------------
     edge_color_arr: Optional[np.ndarray] = None
@@ -1923,8 +1976,17 @@ def create_brain_connectivity_plot(
     # Add edges based on connectivity matrix
     edge_count = 0
     all_weights = []
+    # In DIRECTED mode walk the FULL matrix, not just the upper triangle --
+    # otherwise nodes whose only connections live in the lower triangle would
+    # be classified as isolated and dropped by show_only_connected_nodes, and
+    # their pos/neg classification would be wrong. G_all stays an undirected
+    # nx.Graph: it is used here only for node membership and sign
+    # classification, never to emit the directed edges themselves.
     for i in range(conn_matrix.shape[0]):
-        for j in range(i + 1, conn_matrix.shape[1]):
+        _j_start = 0 if draw_directed else i + 1
+        for j in range(_j_start, conn_matrix.shape[1]):
+            if draw_directed and i == j:
+                continue
             weight = conn_matrix[i, j]
             if abs(weight) > edge_threshold and weight != 0:
                 if i in G_all.nodes() and j in G_all.nodes():
@@ -1953,12 +2015,23 @@ def create_brain_connectivity_plot(
     for node in G_all.nodes():
         has_pos = False
         has_neg = False
-        for neighbor in G_all.neighbors(node):
-            weight = G_all[node][neighbor]['weight']
-            if weight > 0:
-                has_pos = True
-            elif weight < 0:
-                has_neg = True
+        if draw_directed:
+            # read the matrix directly: an nx.Graph keeps one weight per pair,
+            # so a reciprocal pair with one positive and one negative direction
+            # would otherwise lose a sign
+            _row = np.delete(conn_matrix[node, :], node)   # drop the self-loop
+            _col = np.delete(conn_matrix[:, node], node)
+            _touch = np.concatenate([_row, _col])
+            _touch = _touch[np.abs(_touch) > edge_threshold]
+            has_pos = bool(np.any(_touch > 0))
+            has_neg = bool(np.any(_touch < 0))
+        else:
+            for neighbor in G_all.neighbors(node):
+                weight = G_all[node][neighbor]['weight']
+                if weight > 0:
+                    has_pos = True
+                elif weight < 0:
+                    has_neg = True
 
         if has_pos and has_neg:
             nodes_with_both.add(node)
@@ -2039,6 +2112,29 @@ def create_brain_connectivity_plot(
 
     pos_edges, neg_edges = prepare_edges_with_width(G_all)
 
+    # Set camera position. When the caller passed an explicit custom
+    # camera dict, we make sure it carries a 'name' field so the title
+    # and dropdown both have a sensible label to show.
+    if custom_camera is not None:
+        camera = dict(custom_camera)  # don't mutate caller's dict
+        if 'name' not in camera:
+            camera['name'] = custom_camera_name or 'Custom View'
+    else:
+        camera = CameraController.get_camera_position(camera_view)
+
+    # Apply the global zoom multiplier to the camera eye. zoom>1
+    # ⇒ camera closer ⇒ brain looks bigger. The same convention is
+    # re-applied per-panel inside export_multi_view_stitched_png; for
+    # the single-view path this scaling reaches both the saved HTML and
+    # any kaleido static export, since both inherit fig.scene.camera.
+    if zoom and zoom != 1.0:
+        eye_scale = 1.0 / float(zoom)
+        camera['eye'] = {
+            'x': float(camera['eye']['x']) * eye_scale,
+            'y': float(camera['eye']['y']) * eye_scale,
+            'z': float(camera['eye']['z']) * eye_scale,
+        }
+
     # Create figure
     fig = go.Figure()
 
@@ -2081,6 +2177,8 @@ def create_brain_connectivity_plot(
 
     fig.add_trace(go.Mesh3d(**mesh_kwargs))
 
+    _directed_counts = None
+
     # ----- Edge trace emission ---------------------------------------
     # When an edge color matrix is supplied, group edges by their cell
     # color (one trace per unique color) so per-edge colors are preserved
@@ -2114,6 +2212,77 @@ def create_brain_connectivity_plot(
                 name=f'Edges {color} ({len(group)})',
                 legendgroup=f'edge_color_{c_idx}',
             ))
+    elif draw_directed:
+        # ----- DIRECTED path ------------------------------------------
+        # The undirected branch below walks only the upper triangle, which
+        # would discard half of an asymmetric matrix. Here every off-diagonal
+        # cell becomes its own arrow. Lines are grouped into width buckets
+        # (a Scatter3d carries ONE line.width, so the undirected path has to
+        # average them); arrowheads are exact per edge.
+        _dir_matrix = conn_matrix.copy()
+        np.fill_diagonal(_dir_matrix, 0.0)      # self-loops: reported, not drawn
+        _dir_edges = extract_directed_edges(
+            _dir_matrix, edge_threshold=edge_threshold,
+            valid_nodes=list(G_all.nodes()),
+        )
+        if _dir_edges:
+            _dir_w = np.array([e['weight'] for e in _dir_edges])
+            if scale_edge_width:
+                _widths = [
+                    calculate_edge_width(e['weight'], _dir_w,
+                                         min_edge_width, max_edge_width)
+                    for e in _dir_edges
+                ]
+            else:
+                _widths = [min_edge_width] * len(_dir_edges)
+
+            _labels = roi_coords_df['roi_name'].tolist()
+            _hovers = []
+            for e in _dir_edges:
+                if pvalue_lookup is not None:
+                    _hovers.append(
+                        f"{_labels[e['i']]} &#8594; {_labels[e['j']]}<br>"
+                        f"p-value: {pvalue_lookup[e['i'], e['j']]:.4g}<br>"
+                        f"-log10(p): {abs(e['weight']):.3f}"
+                    )
+                else:
+                    _hovers.append(
+                        f"{_labels[e['i']]} &#8594; {_labels[e['j']]}<br>"
+                        f"Strength: {e['weight']:.4f}"
+                    )
+
+            _pos = roi_coords_df[['cog_x', 'cog_y', 'cog_z']].to_numpy(float)
+            _diag = float(np.linalg.norm(
+                np.nanmax(_pos, axis=0) - np.nanmin(_pos, axis=0)))
+            _upp = estimate_units_per_pixel(
+                vertices, export_size[0], export_size[1], zoom)
+            _params = dict(
+                k_width=arrow_size, slenderness=arrow_slenderness,
+                max_edge_frac=arrow_max_edge_frac,
+                min_radius_px=arrow_min_radius_px,
+                bow_chord_frac=arc_bow_frac, bow_floor_frac=arc_bow_floor,
+                darken=arrow_darken,
+            )
+            if arrow_params:
+                _params.update(arrow_params)
+
+            _view_dir = None
+            if arrow_view_mode == 'camera':
+                _e = camera['eye']
+                _view_dir = np.array([_e['x'], _e['y'], _e['z']], float)
+                _n = np.linalg.norm(_view_dir)
+                _view_dir = _view_dir / _n if _n else None
+
+            _traces, _directed_counts = build_directed_edge_traces(
+                _dir_edges, _pos, widths=_widths, hovers=_hovers,
+                pos_color=pos_edge_color, neg_color=neg_edge_color,
+                units_per_px=_upp, centroid=np.nanmean(_pos, axis=0),
+                diag=_diag, node_radius=0.5 * float(np.mean(node_sizes)) * _upp,
+                view_dir=_view_dir, params=_params,
+            )
+            for _t in _traces:
+                fig.add_trace(_t)
+
     else:
         # Add positive edges - consolidated into single trace with average width for legend
         if pos_edges:
@@ -2302,28 +2471,6 @@ def create_brain_connectivity_plot(
             name='nodes_all'
         ))
 
-    # Set camera position. When the caller passed an explicit custom
-    # camera dict, we make sure it carries a 'name' field so the title
-    # and dropdown both have a sensible label to show.
-    if custom_camera is not None:
-        camera = dict(custom_camera)  # don't mutate caller's dict
-        if 'name' not in camera:
-            camera['name'] = custom_camera_name or 'Custom View'
-    else:
-        camera = CameraController.get_camera_position(camera_view)
-
-    # Apply the global zoom multiplier to the camera eye. zoom>1
-    # ⇒ camera closer ⇒ brain looks bigger. The same convention is
-    # re-applied per-panel inside export_multi_view_stitched_png; for
-    # the single-view path this scaling reaches both the saved HTML and
-    # any kaleido static export, since both inherit fig.scene.camera.
-    if zoom and zoom != 1.0:
-        eye_scale = 1.0 / float(zoom)
-        camera['eye'] = {
-            'x': float(camera['eye']['x']) * eye_scale,
-            'y': float(camera['eye']['y']) * eye_scale,
-            'z': float(camera['eye']['z']) * eye_scale,
-        }
 
     # Add camera view to title
     if 'name' in camera:
@@ -2575,9 +2722,14 @@ def create_brain_connectivity_plot(
     if show_camera_readout:
         write_html_kwargs['post_script'] = _build_camera_readout_js()
 
-    fig.write_html(save_path, **write_html_kwargs)
-
-    print(f"Saved interactive visualization to: {save_path}")
+    if no_html:
+        # Static-only run: a go.Volume overlay or a dense network makes the
+        # HTML far larger than the PNG, so skip it entirely when the caller
+        # only wants the export.
+        print("no_html=True: skipping the interactive HTML")
+    else:
+        fig.write_html(save_path, **write_html_kwargs)
+        print(f"Saved interactive visualization to: {save_path}")
 
     # Export static image if requested. The single-image vs multi-view
     # branching lives inside the helper so the modular plot can call the
@@ -2603,12 +2755,19 @@ def create_brain_connectivity_plot(
 
     # Calculate graph statistics
     graph_stats = {
+        'symmetry': symmetry_report,
+        'directed': draw_directed,
         'total_nodes': G_all.number_of_nodes(),
-        'total_edges': G_all.number_of_edges(),
+        'total_edges': (sum(_directed_counts.values()) if _directed_counts
+                        else G_all.number_of_edges()),
         'connected_nodes': G_connected.number_of_nodes(),
         'isolated_nodes': len(isolated_nodes),
-        'positive_edges': len(pos_edges),
-        'negative_edges': len(neg_edges),
+        # In directed mode these count ARROWS (each direction separately),
+        # not undirected pairs, so they match what is drawn.
+        'positive_edges': (_directed_counts['pos'] if _directed_counts
+                           else len(pos_edges)),
+        'negative_edges': (_directed_counts['neg'] if _directed_counts
+                           else len(neg_edges)),
         'nodes_with_pos_only': len(nodes_with_pos_only),
         'nodes_with_neg_only': len(nodes_with_neg_only),
         'nodes_with_both': len(nodes_with_both),
@@ -2733,6 +2892,19 @@ def create_brain_connectivity_plot_with_modularity(
     viz_type: str = 'all',
     inter_edge_color: Optional[str] = None,
     show_node_labels: Union[bool, np.ndarray, pd.Series, List, str, None] = True,
+    directed: Optional[bool] = None,
+    matrix_orientation: str = 'row-to-col',
+    symmetry_tol: Optional[float] = None,
+    arrow_view_mode: str = 'camera',
+    arrow_size: float = ARROW_DEFAULTS['k_width'],
+    arrow_slenderness: float = ARROW_DEFAULTS['slenderness'],
+    arrow_max_edge_frac: float = ARROW_DEFAULTS['max_edge_frac'],
+    arrow_min_radius_px: float = ARROW_DEFAULTS['min_radius_px'],
+    arc_bow_frac: float = ARROW_DEFAULTS['bow_chord_frac'],
+    arc_bow_floor: float = ARROW_DEFAULTS['bow_floor_frac'],
+    arrow_darken: float = ARROW_DEFAULTS['darken'],
+    arrow_params: Optional[Dict] = None,
+    no_html: bool = False,
 ) -> Tuple[go.Figure, Dict]:
     """
     Create brain connectivity visualization with modularity-based node coloring.
@@ -3141,6 +3313,15 @@ def create_brain_connectivity_plot_with_modularity(
         mesh_light_position=mesh_light_position,
         custom_camera_name=custom_camera_name,
         show_camera_readout=show_camera_readout,
+        # The inner call renders the mesh/nodes only -- its edge traces are
+        # stripped below and rebuilt per module. Force it UNDIRECTED so it
+        # neither re-prints the symmetry report nor builds arrows we would
+        # immediately delete.
+        directed=False,
+        matrix_orientation=matrix_orientation,
+        symmetry_tol=symmetry_tol,
+        no_html=True,
+        _report_symmetry=False,
         show_size_legend=show_size_legend,
         show_width_legend=show_width_legend,
         node_size_legend_metric=node_size_legend_metric,
@@ -3176,6 +3357,18 @@ def create_brain_connectivity_plot_with_modularity(
     # filter that the inner create_brain_connectivity_plot used, so the
     # rebuilt per-module traces stay consistent with the originals.
     conn_matrix = load_connectivity_input(connectivity_matrix, n_expected_nodes=n_nodes)
+    conn_matrix = apply_matrix_orientation(conn_matrix, matrix_orientation)
+
+    # Symmetry is decided on the matrix as loaded, BEFORE viz_type filtering
+    # zeroes cells out -- otherwise 'intra'/'inter' could make an asymmetric
+    # matrix look symmetric and silently turn the arrows off.
+    symmetry_report = check_matrix_symmetry(
+        conn_matrix, tol=symmetry_tol, orientation=matrix_orientation
+    )
+    draw_directed = (
+        symmetry_report['directed'] if directed is None else bool(directed)
+    )
+    print(format_symmetry_report(symmetry_report, drawing_directed=draw_directed))
 
     pvalue_lookup_mod: Optional[np.ndarray] = None
     if matrix_type == 'pvalue':
@@ -3184,6 +3377,8 @@ def create_brain_connectivity_plot_with_modularity(
             sign_arr_mod = load_connectivity_input(
                 sign_matrix, n_expected_nodes=conn_matrix.shape[0]
             )
+            sign_arr_mod = apply_matrix_orientation(
+                sign_arr_mod, matrix_orientation)
         conn_matrix, pvalue_lookup_mod = transform_pvalue_matrix(
             conn_matrix,
             pvalue_threshold=pvalue_threshold,
@@ -3314,197 +3509,27 @@ def create_brain_connectivity_plot_with_modularity(
         module_node_idx = np.where(module_arr == module_id)[0]
         n_in_module = len(module_node_idx)
 
-        # ---------- edges owned by this module ----------
-        edge_x, edge_y, edge_z, edge_hover = [], [], [], []
-        edge_widths_for_avg = []
-        # Per-edge color used only when edge_color_matrix is supplied;
-        # in that case we emit one trace per unique color below.
-        per_edge_colors: List[str] = []
-        # Per-edge inter-vs-intra flag, used only when inter_color_active.
-        per_edge_is_inter: List[bool] = []
-        # Collect (i, j, weight) of edges where source (lower index) is in module
-        for i in range(conn_matrix.shape[0]):
-            if module_arr[i] != module_id:
-                continue
-            for j in range(i + 1, conn_matrix.shape[1]):
-                weight = conn_matrix[i, j]
-                if abs(weight) <= edge_threshold or weight == 0:
-                    continue
-                if edge_color_arr_mod is not None and edge_color_arr_mod[i, j] == "":
-                    continue
-                try:
-                    xi = roi_coords_df.loc[i, 'cog_x']
-                    yi = roi_coords_df.loc[i, 'cog_y']
-                    zi = roi_coords_df.loc[i, 'cog_z']
-                    xj = roi_coords_df.loc[j, 'cog_x']
-                    yj = roi_coords_df.loc[j, 'cog_y']
-                    zj = roi_coords_df.loc[j, 'cog_z']
-                except (KeyError, IndexError):
-                    continue
-
-                if scale_ew:
-                    w = calculate_edge_width(weight, all_weights_full, min_ew, max_ew)
-                else:
-                    w = min_ew
-                edge_widths_for_avg.append(w)
-
-                edge_x.extend([xi, xj, None])
-                edge_y.extend([yi, yj, None])
-                edge_z.extend([zi, zj, None])
-                if pvalue_lookup_mod is not None:
-                    hover_text = (
-                        f"{roi_coords_df.loc[i, 'roi_name']} (M{module_arr[i]}) "
-                        f"<-> {roi_coords_df.loc[j, 'roi_name']} (M{module_arr[j]})<br>"
-                        f"p-value: {pvalue_lookup_mod[i, j]:.4g}<br>"
-                        f"-log10(p): {abs(weight):.3f}"
-                    )
-                else:
-                    hover_text = (
-                        f"{roi_coords_df.loc[i, 'roi_name']} (M{module_arr[i]}) "
-                        f"<-> {roi_coords_df.loc[j, 'roi_name']} (M{module_arr[j]})<br>"
-                        f"Strength: {weight:.4f}"
-                    )
-                edge_hover.extend([hover_text, hover_text, ''])
-                if edge_color_arr_mod is not None:
-                    per_edge_colors.append(str(edge_color_arr_mod[i, j]))
-                per_edge_is_inter.append(bool(module_arr[j] != module_id))
-
-        if edge_x:
-            # When the user supplied an explicit edge color matrix, those
-            # colors override the module / sign coloring. Group this
-            # module's edges by color and emit one sub-trace per color so
-            # plotly can render them correctly while still keeping all of
-            # them in this module's legendgroup.
-            if edge_color_arr_mod is not None:
-                from collections import defaultdict
-                # Walk per-edge state in lockstep: each edge contributes
-                # 3 entries to (edge_x, edge_y, edge_z) and edge_hover.
-                grouped_x: Dict[str, List] = defaultdict(list)
-                grouped_y: Dict[str, List] = defaultdict(list)
-                grouped_z: Dict[str, List] = defaultdict(list)
-                grouped_h: Dict[str, List] = defaultdict(list)
-                grouped_w: Dict[str, List] = defaultdict(list)
-                for k, ec in enumerate(per_edge_colors):
-                    sx = edge_x[k * 3:k * 3 + 3]
-                    sy = edge_y[k * 3:k * 3 + 3]
-                    sz = edge_z[k * 3:k * 3 + 3]
-                    sh = edge_hover[k * 3:k * 3 + 3]
-                    grouped_x[ec].extend(sx)
-                    grouped_y[ec].extend(sy)
-                    grouped_z[ec].extend(sz)
-                    grouped_h[ec].extend(sh)
-                    grouped_w[ec].append(edge_widths_for_avg[k])
-                for ec in sorted(grouped_x.keys()):
-                    avg_ew = (
-                        float(np.mean(grouped_w[ec])) if grouped_w[ec] else max_ew
-                    )
-                    fig.add_trace(go.Scatter3d(
-                        x=grouped_x[ec],
-                        y=grouped_y[ec],
-                        z=grouped_z[ec],
-                        mode='lines',
-                        line=dict(color=ec, width=avg_ew),
-                        opacity=0.7,
-                        hoverinfo='text',
-                        hovertext=grouped_h[ec],
-                        showlegend=False,
-                        name=f'Module {module_id} Edges ({ec})',
-                        legendgroup=legend_group,
-                    ))
-            else:
-                # Pick the line color based on edge_color_mode
-                if edge_color_mode == 'module':
-                    line_color = module_color
-                else:
-                    # 'sign' mode -- the trace is grouped by module but
-                    # each individual edge keeps the pos/neg color of its
-                    # weight. Plotly Scatter3d only supports a single
-                    # color per trace, so we split into two sub-traces
-                    # below instead. We'll handle that case after this
-                    # block.
-                    line_color = None
-
-                if line_color is not None:
-                    if inter_color_active:
-                        # Split this module's edges into intra (module
-                        # color) and inter (override color) sub-traces.
-                        # Each edge contributes 3 entries to the x/y/z
-                        # lists (start, end, None separator).
-                        intra_x, intra_y, intra_z, intra_h, intra_w = (
-                            [], [], [], [], []
-                        )
-                        inter_x, inter_y, inter_z, inter_h, inter_w = (
-                            [], [], [], [], []
-                        )
-                        for k, is_inter in enumerate(per_edge_is_inter):
-                            sx = edge_x[k * 3:k * 3 + 3]
-                            sy = edge_y[k * 3:k * 3 + 3]
-                            sz = edge_z[k * 3:k * 3 + 3]
-                            sh = edge_hover[k * 3:k * 3 + 3]
-                            sw = edge_widths_for_avg[k]
-                            if is_inter:
-                                inter_x.extend(sx); inter_y.extend(sy)
-                                inter_z.extend(sz); inter_h.extend(sh)
-                                inter_w.append(sw)
-                            else:
-                                intra_x.extend(sx); intra_y.extend(sy)
-                                intra_z.extend(sz); intra_h.extend(sh)
-                                intra_w.append(sw)
-
-                        if intra_x:
-                            avg_w = float(np.mean(intra_w)) if intra_w else max_ew
-                            fig.add_trace(go.Scatter3d(
-                                x=intra_x, y=intra_y, z=intra_z,
-                                mode='lines',
-                                line=dict(color=line_color, width=avg_w),
-                                opacity=0.6,
-                                hoverinfo='text',
-                                hovertext=intra_h,
-                                showlegend=False,
-                                name=f'Module {module_id} Intra Edges',
-                                legendgroup=legend_group,
-                            ))
-                        if inter_x:
-                            avg_w = float(np.mean(inter_w)) if inter_w else max_ew
-                            fig.add_trace(go.Scatter3d(
-                                x=inter_x, y=inter_y, z=inter_z,
-                                mode='lines',
-                                line=dict(color=inter_edge_color, width=avg_w),
-                                opacity=0.6,
-                                hoverinfo='text',
-                                hovertext=inter_h,
-                                showlegend=False,
-                                name=f'Module {module_id} Inter Edges',
-                                legendgroup=legend_group,
-                            ))
-                    else:
-                        avg_w = float(np.mean(edge_widths_for_avg)) if edge_widths_for_avg else max_ew
-                        fig.add_trace(go.Scatter3d(
-                            x=edge_x, y=edge_y, z=edge_z,
-                            mode='lines',
-                            line=dict(color=line_color, width=avg_w),
-                            opacity=0.6,
-                            hoverinfo='text',
-                            hovertext=edge_hover,
-                            showlegend=False,
-                            name=f'Module {module_id} Edges',
-                            legendgroup=legend_group,
-                        ))
-
-        if edge_color_mode == 'sign' and edge_color_arr_mod is None:
-            # Re-walk and split this module's edges into positive and
-            # negative sub-traces, both still tagged with the module's
-            # legendgroup so they hide together with the module nodes.
-            # (Skipped when edge_color_arr_mod is set: those edges were
-            # already emitted with their per-cell colors above.)
-            pos_x, pos_y, pos_z, pos_hover, pos_widths = [], [], [], [], []
-            neg_x, neg_y, neg_z, neg_hover, neg_widths = [], [], [], [], []
+        # Directed matrices emit their arrows in ONE pass after this
+        # loop (see the block below), because an arrowhead's geometry
+        # depends on the whole edge, not on which module owns it.
+        if not draw_directed:
+            # ---------- edges owned by this module ----------
+            edge_x, edge_y, edge_z, edge_hover = [], [], [], []
+            edge_widths_for_avg = []
+            # Per-edge color used only when edge_color_matrix is supplied;
+            # in that case we emit one trace per unique color below.
+            per_edge_colors: List[str] = []
+            # Per-edge inter-vs-intra flag, used only when inter_color_active.
+            per_edge_is_inter: List[bool] = []
+            # Collect (i, j, weight) of edges where source (lower index) is in module
             for i in range(conn_matrix.shape[0]):
                 if module_arr[i] != module_id:
                     continue
                 for j in range(i + 1, conn_matrix.shape[1]):
                     weight = conn_matrix[i, j]
                     if abs(weight) <= edge_threshold or weight == 0:
+                        continue
+                    if edge_color_arr_mod is not None and edge_color_arr_mod[i, j] == "":
                         continue
                     try:
                         xi = roi_coords_df.loc[i, 'cog_x']
@@ -3520,55 +3545,229 @@ def create_brain_connectivity_plot_with_modularity(
                         w = calculate_edge_width(weight, all_weights_full, min_ew, max_ew)
                     else:
                         w = min_ew
+                    edge_widths_for_avg.append(w)
 
-                    hover_text = (
-                        f"{roi_coords_df.loc[i, 'roi_name']} (M{module_arr[i]}) "
-                        f"<-> {roi_coords_df.loc[j, 'roi_name']} (M{module_arr[j]})<br>"
-                        f"Strength: {weight:.4f}"
-                    )
-                    if weight > 0:
-                        pos_x.extend([xi, xj, None])
-                        pos_y.extend([yi, yj, None])
-                        pos_z.extend([zi, zj, None])
-                        pos_hover.extend([hover_text, hover_text, ''])
-                        pos_widths.append(w)
+                    edge_x.extend([xi, xj, None])
+                    edge_y.extend([yi, yj, None])
+                    edge_z.extend([zi, zj, None])
+                    if pvalue_lookup_mod is not None:
+                        hover_text = (
+                            f"{roi_coords_df.loc[i, 'roi_name']} (M{module_arr[i]}) "
+                            f"<-> {roi_coords_df.loc[j, 'roi_name']} (M{module_arr[j]})<br>"
+                            f"p-value: {pvalue_lookup_mod[i, j]:.4g}<br>"
+                            f"-log10(p): {abs(weight):.3f}"
+                        )
                     else:
-                        neg_x.extend([xi, xj, None])
-                        neg_y.extend([yi, yj, None])
-                        neg_z.extend([zi, zj, None])
-                        neg_hover.extend([hover_text, hover_text, ''])
-                        neg_widths.append(w)
+                        hover_text = (
+                            f"{roi_coords_df.loc[i, 'roi_name']} (M{module_arr[i]}) "
+                            f"<-> {roi_coords_df.loc[j, 'roi_name']} (M{module_arr[j]})<br>"
+                            f"Strength: {weight:.4f}"
+                        )
+                    edge_hover.extend([hover_text, hover_text, ''])
+                    if edge_color_arr_mod is not None:
+                        per_edge_colors.append(str(edge_color_arr_mod[i, j]))
+                    per_edge_is_inter.append(bool(module_arr[j] != module_id))
 
-            if pos_x:
-                fig.add_trace(go.Scatter3d(
-                    x=pos_x, y=pos_y, z=pos_z,
-                    mode='lines',
-                    line=dict(
-                        color=pos_edge_color,
-                        width=float(np.mean(pos_widths)) if pos_widths else max_ew,
-                    ),
-                    opacity=0.6,
-                    hoverinfo='text',
-                    hovertext=pos_hover,
-                    showlegend=False,
-                    name=f'Module {module_id} (+ edges)',
-                    legendgroup=legend_group,
-                ))
-            if neg_x:
-                fig.add_trace(go.Scatter3d(
-                    x=neg_x, y=neg_y, z=neg_z,
-                    mode='lines',
-                    line=dict(
-                        color=neg_edge_color,
-                        width=float(np.mean(neg_widths)) if neg_widths else max_ew,
-                    ),
-                    opacity=0.6,
-                    hoverinfo='text',
-                    hovertext=neg_hover,
-                    showlegend=False,
-                    name=f'Module {module_id} (- edges)',
-                    legendgroup=legend_group,
-                ))
+            if edge_x:
+                # When the user supplied an explicit edge color matrix, those
+                # colors override the module / sign coloring. Group this
+                # module's edges by color and emit one sub-trace per color so
+                # plotly can render them correctly while still keeping all of
+                # them in this module's legendgroup.
+                if edge_color_arr_mod is not None:
+                    from collections import defaultdict
+                    # Walk per-edge state in lockstep: each edge contributes
+                    # 3 entries to (edge_x, edge_y, edge_z) and edge_hover.
+                    grouped_x: Dict[str, List] = defaultdict(list)
+                    grouped_y: Dict[str, List] = defaultdict(list)
+                    grouped_z: Dict[str, List] = defaultdict(list)
+                    grouped_h: Dict[str, List] = defaultdict(list)
+                    grouped_w: Dict[str, List] = defaultdict(list)
+                    for k, ec in enumerate(per_edge_colors):
+                        sx = edge_x[k * 3:k * 3 + 3]
+                        sy = edge_y[k * 3:k * 3 + 3]
+                        sz = edge_z[k * 3:k * 3 + 3]
+                        sh = edge_hover[k * 3:k * 3 + 3]
+                        grouped_x[ec].extend(sx)
+                        grouped_y[ec].extend(sy)
+                        grouped_z[ec].extend(sz)
+                        grouped_h[ec].extend(sh)
+                        grouped_w[ec].append(edge_widths_for_avg[k])
+                    for ec in sorted(grouped_x.keys()):
+                        avg_ew = (
+                            float(np.mean(grouped_w[ec])) if grouped_w[ec] else max_ew
+                        )
+                        fig.add_trace(go.Scatter3d(
+                            x=grouped_x[ec],
+                            y=grouped_y[ec],
+                            z=grouped_z[ec],
+                            mode='lines',
+                            line=dict(color=ec, width=avg_ew),
+                            opacity=0.7,
+                            hoverinfo='text',
+                            hovertext=grouped_h[ec],
+                            showlegend=False,
+                            name=f'Module {module_id} Edges ({ec})',
+                            legendgroup=legend_group,
+                        ))
+                else:
+                    # Pick the line color based on edge_color_mode
+                    if edge_color_mode == 'module':
+                        line_color = module_color
+                    else:
+                        # 'sign' mode -- the trace is grouped by module but
+                        # each individual edge keeps the pos/neg color of its
+                        # weight. Plotly Scatter3d only supports a single
+                        # color per trace, so we split into two sub-traces
+                        # below instead. We'll handle that case after this
+                        # block.
+                        line_color = None
+
+                    if line_color is not None:
+                        if inter_color_active:
+                            # Split this module's edges into intra (module
+                            # color) and inter (override color) sub-traces.
+                            # Each edge contributes 3 entries to the x/y/z
+                            # lists (start, end, None separator).
+                            intra_x, intra_y, intra_z, intra_h, intra_w = (
+                                [], [], [], [], []
+                            )
+                            inter_x, inter_y, inter_z, inter_h, inter_w = (
+                                [], [], [], [], []
+                            )
+                            for k, is_inter in enumerate(per_edge_is_inter):
+                                sx = edge_x[k * 3:k * 3 + 3]
+                                sy = edge_y[k * 3:k * 3 + 3]
+                                sz = edge_z[k * 3:k * 3 + 3]
+                                sh = edge_hover[k * 3:k * 3 + 3]
+                                sw = edge_widths_for_avg[k]
+                                if is_inter:
+                                    inter_x.extend(sx); inter_y.extend(sy)
+                                    inter_z.extend(sz); inter_h.extend(sh)
+                                    inter_w.append(sw)
+                                else:
+                                    intra_x.extend(sx); intra_y.extend(sy)
+                                    intra_z.extend(sz); intra_h.extend(sh)
+                                    intra_w.append(sw)
+
+                            if intra_x:
+                                avg_w = float(np.mean(intra_w)) if intra_w else max_ew
+                                fig.add_trace(go.Scatter3d(
+                                    x=intra_x, y=intra_y, z=intra_z,
+                                    mode='lines',
+                                    line=dict(color=line_color, width=avg_w),
+                                    opacity=0.6,
+                                    hoverinfo='text',
+                                    hovertext=intra_h,
+                                    showlegend=False,
+                                    name=f'Module {module_id} Intra Edges',
+                                    legendgroup=legend_group,
+                                ))
+                            if inter_x:
+                                avg_w = float(np.mean(inter_w)) if inter_w else max_ew
+                                fig.add_trace(go.Scatter3d(
+                                    x=inter_x, y=inter_y, z=inter_z,
+                                    mode='lines',
+                                    line=dict(color=inter_edge_color, width=avg_w),
+                                    opacity=0.6,
+                                    hoverinfo='text',
+                                    hovertext=inter_h,
+                                    showlegend=False,
+                                    name=f'Module {module_id} Inter Edges',
+                                    legendgroup=legend_group,
+                                ))
+                        else:
+                            avg_w = float(np.mean(edge_widths_for_avg)) if edge_widths_for_avg else max_ew
+                            fig.add_trace(go.Scatter3d(
+                                x=edge_x, y=edge_y, z=edge_z,
+                                mode='lines',
+                                line=dict(color=line_color, width=avg_w),
+                                opacity=0.6,
+                                hoverinfo='text',
+                                hovertext=edge_hover,
+                                showlegend=False,
+                                name=f'Module {module_id} Edges',
+                                legendgroup=legend_group,
+                            ))
+
+            if edge_color_mode == 'sign' and edge_color_arr_mod is None:
+                # Re-walk and split this module's edges into positive and
+                # negative sub-traces, both still tagged with the module's
+                # legendgroup so they hide together with the module nodes.
+                # (Skipped when edge_color_arr_mod is set: those edges were
+                # already emitted with their per-cell colors above.)
+                pos_x, pos_y, pos_z, pos_hover, pos_widths = [], [], [], [], []
+                neg_x, neg_y, neg_z, neg_hover, neg_widths = [], [], [], [], []
+                for i in range(conn_matrix.shape[0]):
+                    if module_arr[i] != module_id:
+                        continue
+                    for j in range(i + 1, conn_matrix.shape[1]):
+                        weight = conn_matrix[i, j]
+                        if abs(weight) <= edge_threshold or weight == 0:
+                            continue
+                        try:
+                            xi = roi_coords_df.loc[i, 'cog_x']
+                            yi = roi_coords_df.loc[i, 'cog_y']
+                            zi = roi_coords_df.loc[i, 'cog_z']
+                            xj = roi_coords_df.loc[j, 'cog_x']
+                            yj = roi_coords_df.loc[j, 'cog_y']
+                            zj = roi_coords_df.loc[j, 'cog_z']
+                        except (KeyError, IndexError):
+                            continue
+
+                        if scale_ew:
+                            w = calculate_edge_width(weight, all_weights_full, min_ew, max_ew)
+                        else:
+                            w = min_ew
+
+                        hover_text = (
+                            f"{roi_coords_df.loc[i, 'roi_name']} (M{module_arr[i]}) "
+                            f"<-> {roi_coords_df.loc[j, 'roi_name']} (M{module_arr[j]})<br>"
+                            f"Strength: {weight:.4f}"
+                        )
+                        if weight > 0:
+                            pos_x.extend([xi, xj, None])
+                            pos_y.extend([yi, yj, None])
+                            pos_z.extend([zi, zj, None])
+                            pos_hover.extend([hover_text, hover_text, ''])
+                            pos_widths.append(w)
+                        else:
+                            neg_x.extend([xi, xj, None])
+                            neg_y.extend([yi, yj, None])
+                            neg_z.extend([zi, zj, None])
+                            neg_hover.extend([hover_text, hover_text, ''])
+                            neg_widths.append(w)
+
+                if pos_x:
+                    fig.add_trace(go.Scatter3d(
+                        x=pos_x, y=pos_y, z=pos_z,
+                        mode='lines',
+                        line=dict(
+                            color=pos_edge_color,
+                            width=float(np.mean(pos_widths)) if pos_widths else max_ew,
+                        ),
+                        opacity=0.6,
+                        hoverinfo='text',
+                        hovertext=pos_hover,
+                        showlegend=False,
+                        name=f'Module {module_id} (+ edges)',
+                        legendgroup=legend_group,
+                    ))
+                if neg_x:
+                    fig.add_trace(go.Scatter3d(
+                        x=neg_x, y=neg_y, z=neg_z,
+                        mode='lines',
+                        line=dict(
+                            color=neg_edge_color,
+                            width=float(np.mean(neg_widths)) if neg_widths else max_ew,
+                        ),
+                        opacity=0.6,
+                        hoverinfo='text',
+                        hovertext=neg_hover,
+                        showlegend=False,
+                        name=f'Module {module_id} (- edges)',
+                        legendgroup=legend_group,
+                    ))
 
         # ---------- nodes belonging to this module ----------
         # Only show nodes that have at least one connection if
@@ -3684,8 +3883,105 @@ def create_brain_connectivity_plot_with_modularity(
 
     graph_stats['edge_color_mode'] = edge_color_mode
 
+    # ----- DIRECTED edges for the modularity plot ----------------------
+    # Emitted once, after the per-module loop, because an arrowhead's geometry
+    # depends on the whole edge. Colour and legendgroup are still per-module
+    # (or per-sign), so clicking a module entry still hides its arrows.
+    if draw_directed:
+        _dm = conn_matrix.copy()
+        np.fill_diagonal(_dm, 0.0)
+        _de = extract_directed_edges(
+            _dm, edge_threshold=edge_threshold,
+            valid_nodes=list(range(len(roi_coords_df))),
+        )
+        # NOTE: conn_matrix has ALREADY been filtered by viz_type further up
+        # (nodes_only zeroes it, intra/inter mask it), so no re-filtering here.
+        # Honour a per-edge color matrix as a filter, as the undirected path does.
+        if edge_color_arr_mod is not None:
+            _de = [e for e in _de if edge_color_arr_mod[e['i'], e['j']] != ""]
+
+        if _de:
+            _dw = np.array([e['weight'] for e in _de])
+            if scale_ew:
+                _widths = [calculate_edge_width(e['weight'], _dw, min_ew, max_ew)
+                           for e in _de]
+            else:
+                _widths = [min_ew] * len(_de)
+            _labels = roi_coords_df['roi_name'].tolist()
+            _hovers = [
+                f"{_labels[e['i']]} &#8594; {_labels[e['j']]}<br>"
+                f"Strength: {e['weight']:.4f}" for e in _de
+            ]
+
+            _colors, _groups = [], []
+            for e in _de:
+                _src_mod = module_arr[e['i']]
+                is_inter = module_arr[e['i']] != module_arr[e['j']]
+                if edge_color_arr_mod is not None:
+                    _colors.append(str(edge_color_arr_mod[e['i'], e['j']]))
+                elif edge_color_mode == 'sign':
+                    _colors.append(None)          # fall back to sign colouring
+                elif inter_color_active and is_inter:
+                    _colors.append(inter_edge_color)
+                else:
+                    _colors.append(module_color_map_internal[_src_mod])
+                _groups.append(f'module_{_src_mod}')
+
+            _pos = roi_coords_df[['cog_x', 'cog_y', 'cog_z']].to_numpy(float)
+            _diag = float(np.linalg.norm(
+                np.nanmax(_pos, axis=0) - np.nanmin(_pos, axis=0)))
+            _upp = estimate_units_per_pixel(
+                vertices, export_size[0], export_size[1], zoom)
+            _params = dict(
+                k_width=arrow_size, slenderness=arrow_slenderness,
+                max_edge_frac=arrow_max_edge_frac,
+                min_radius_px=arrow_min_radius_px,
+                bow_chord_frac=arc_bow_frac, bow_floor_frac=arc_bow_floor,
+                darken=arrow_darken,
+            )
+            if arrow_params:
+                _params.update(arrow_params)
+            # Resolve the camera locally -- this function delegates rendering
+            # to create_brain_connectivity_plot and never binds `camera` itself.
+            if custom_camera is not None:
+                _cam = dict(custom_camera)
+            else:
+                _cam = CameraController.get_camera_position(camera_view)
+            _view_dir = None
+            if arrow_view_mode == 'camera':
+                _e = _cam['eye']
+                _view_dir = np.array([_e['x'], _e['y'], _e['z']], float)
+                _n = np.linalg.norm(_view_dir)
+                _view_dir = _view_dir / _n if _n else None
+            # node marker radius, computed independently of the per-module loop
+            _ns = convert_node_size_input(node_size, n_nodes, default_size=8.0)
+            _ns = np.asarray(_ns, float) * float(node_size_scale)
+
+            _sign_mode = (edge_color_mode == 'sign'
+                          and edge_color_arr_mod is None)
+            _traces, _ = build_directed_edge_traces(
+                _de, _pos, widths=_widths, hovers=_hovers,
+                pos_color=pos_edge_color, neg_color=neg_edge_color,
+                units_per_px=_upp, centroid=np.nanmean(_pos, axis=0),
+                diag=_diag,
+                node_radius=0.5 * float(np.mean(_ns)) * _upp,
+                view_dir=_view_dir, params=_params,
+                colors=None if _sign_mode else _colors,
+                legendgroups=None if _sign_mode else _groups,
+                show_legend=_sign_mode,
+            )
+            for _t in _traces:
+                fig.add_trace(_t)
+            print(f"  directed: {len(_de)} arrows "
+                  f"({'sign' if _sign_mode else edge_color_mode}-coloured)")
+
     # Add module statistics to graph_stats
     unique_modules = np.unique(module_arr)
+    # The inner delegation was forced undirected, so its stats describe that
+    # call, not this one -- overwrite with the real verdict.
+    graph_stats['symmetry'] = symmetry_report
+    graph_stats['directed'] = draw_directed
+
     module_sizes = {f'module_{m}': int(np.sum(module_arr == m)) for m in unique_modules}
     graph_stats['module_assignments'] = module_arr
     graph_stats['n_modules'] = len(unique_modules)
@@ -3767,7 +4063,10 @@ def create_brain_connectivity_plot_with_modularity(
     write_html_kwargs = dict(config=config)
     if show_camera_readout:
         write_html_kwargs['post_script'] = _build_camera_readout_js()
-    fig.write_html(save_path, **write_html_kwargs)
+    if no_html:
+        print("no_html=True: skipping the interactive HTML")
+    else:
+        fig.write_html(save_path, **write_html_kwargs)
 
     # Export static image now that the per-module traces are in place.
     # The inner call was passed export_image=None / multi_view=None, so

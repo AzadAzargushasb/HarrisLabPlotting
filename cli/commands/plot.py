@@ -433,6 +433,99 @@ def _parse_show_node_labels_arg(s):
                   "--multi-view-zoom flag, which has been removed."
               ))
 
+# === Directed graphs (asymmetric matrices) ===
+@click.option("--directed/--undirected", "directed", default=None,
+              help=(
+                  "Force directed (arrowheads) or undirected rendering. "
+                  "DEFAULT: auto -- the matrix is tested for symmetry and "
+                  "arrows are drawn only if it is asymmetric. The verdict is "
+                  "printed on every run either way."
+              ))
+@click.option("--matrix-orientation",
+              type=click.Choice(["row-to-col", "col-to-row"], case_sensitive=False),
+              default="row-to-col",
+              help=(
+                  "Which index is the SOURCE. 'row-to-col' (DEFAULT) means "
+                  "M[i,j] is the connection i -> j, the numpy/networkx "
+                  "convention. 'col-to-row' transposes on load: use it for "
+                  "SPM DCM, whose A(i,j) is the connection FROM j TO i. "
+                  "Getting this wrong reverses every arrow silently. NOTE a "
+                  "row-stochastic transition matrix (rows sum to 1) is "
+                  "already row-to-col and needs no change."
+              ))
+@click.option("--symmetry-tol", type=float, default=None,
+              help=(
+                  "Absolute tolerance for calling a matrix symmetric. "
+                  "DEFAULT: numpy's allclose (rtol 1e-5, atol 1e-8), which "
+                  "treats CSV round-trip noise (~1e-16) as symmetric. Lower "
+                  "it to be stricter. Units: same as the matrix values."
+              ))
+@click.option("--arrow-view-mode",
+              type=click.Choice(["camera", "fixed"], case_sensitive=False),
+              default="camera",
+              help=(
+                  "How reciprocal (two-way) pairs bow apart. 'camera' "
+                  "(DEFAULT) bows each arc perpendicular to the viewing axis "
+                  "so the pair separates as widely as that projection allows, "
+                  "recomputed per multi-view panel. 'fixed' bows in an "
+                  "anatomically fixed direction, identical from every angle. "
+                  "Saved HTML always uses 'fixed' so it stays correct when "
+                  "you rotate it."
+              ))
+@click.option("--arrow-size", type=float, default=1.08,
+              help=(
+                  "Arrowhead radius as a MULTIPLE of that edge's own line "
+                  "half-width. 1.0 = exactly as wide as its line; larger = a "
+                  "fatter head. Unitless ratio. DEFAULT 1.08. Typical range "
+                  "1.0-2.0."
+              ))
+@click.option("--arrow-slenderness", type=float, default=0.18,
+              help=(
+                  "Arrowhead radius divided by its length. SMALLER = a "
+                  "longer, thinner dart (more obviously an arrow); larger = "
+                  "short and stubby. Unitless ratio. DEFAULT 0.18. Typical "
+                  "range 0.12-0.35."
+              ))
+@click.option("--arrow-max-edge-frac", type=float, default=0.30,
+              help=(
+                  "Cap on arrowhead length as a FRACTION of the edge it caps, "
+                  "so a short edge never gets a head longer than itself. "
+                  "Unitless fraction of edge length. DEFAULT 0.30 (30%). "
+                  "Typical range 0.2-0.5."
+              ))
+@click.option("--arrow-min-radius-px", type=float, default=1.2,
+              help=(
+                  "Floor on arrowhead radius, in SCREEN PIXELS, so the very "
+                  "thinnest edges still show a visible head. DEFAULT 1.2 px. "
+                  "Set 0 to let heads shrink with their line without limit."
+              ))
+@click.option("--arc-bow-frac", type=float, default=0.10,
+              help=(
+                  "How far a reciprocal pair's arcs bow apart, as a FRACTION "
+                  "of the straight-line distance between the two nodes. "
+                  "DEFAULT 0.10 (10% of the chord). One-way edges are always "
+                  "straight and ignore this."
+              ))
+@click.option("--arc-bow-floor", type=float, default=0.03,
+              help=(
+                  "Minimum bow for a reciprocal pair, as a FRACTION of the "
+                  "coordinate bounding-box diagonal. Without a floor, very "
+                  "short pairs bow by almost nothing and overlap. DEFAULT "
+                  "0.03 (3% of the diagonal)."
+              ))
+@click.option("--arrow-darken", type=float, default=0.74,
+              help=(
+                  "Arrowheads are drawn in this SHADE of their line colour so "
+                  "they read against it: 1.0 = identical colour, lower = "
+                  "darker. Unitless multiplier on RGB. DEFAULT 0.74."
+              ))
+@click.option("--no-html", is_flag=True, default=False,
+              help=(
+                  "Skip writing the interactive HTML and produce only the "
+                  "static --export-image. Use this when you want a figure and "
+                  "not a browser file -- especially with voxel overlays, "
+                  "where the HTML is far larger than the PNG."
+              ))
 # === Convenience ===
 @click.option("--show/--no-show", default=False,
               help="Open the HTML file in browser after creation.")
@@ -455,7 +548,11 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
          show_size_legend, show_width_legend, node_size_legend_metric,
          multi_view, custom_views, multi_view_panel_size,
          multi_view_keep_first_legend, multi_view_grid, zoom,
-         show):
+         show,
+         directed, matrix_orientation, symmetry_tol, arrow_view_mode,
+         arrow_size, arrow_slenderness, arrow_max_edge_frac,
+         arrow_min_radius_px, arc_bow_frac, arc_bow_floor,
+         arrow_darken, no_html):
     """
     Create an interactive 3D brain connectivity visualization.
 
@@ -797,9 +894,24 @@ def plot(mesh, coords, matrix, output, title, node_size, node_color,
             multi_view_keep_first_legend=multi_view_keep_first_legend,
             multi_view_grid=multi_view_grid_val,
             zoom=zoom,
+            directed=directed,
+            matrix_orientation=matrix_orientation,
+            symmetry_tol=symmetry_tol,
+            arrow_view_mode=arrow_view_mode,
+            arrow_size=arrow_size,
+            arrow_slenderness=arrow_slenderness,
+            arrow_max_edge_frac=arrow_max_edge_frac,
+            arrow_min_radius_px=arrow_min_radius_px,
+            arc_bow_frac=arc_bow_frac,
+            arc_bow_floor=arc_bow_floor,
+            arrow_darken=arrow_darken,
+            no_html=no_html,
         )
 
-        print_success(f"Saved interactive visualization to {output}")
+        if no_html:
+            print_info("--no-html: interactive HTML not written")
+        else:
+            print_success(f"Saved interactive visualization to {output}")
 
         if export_image:
             print_success(f"Exported static image to {export_image}")

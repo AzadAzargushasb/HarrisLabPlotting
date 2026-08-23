@@ -335,6 +335,56 @@ def matrix_info(matrix, volume):
         table = create_stats_table(stats, title="Matrix Information")
         console.print(table)
 
+        # ----- direction report ---------------------------------------
+        # A bare "Symmetric: False" is not enough to act on: it does not say
+        # how asymmetric, how many connections are reciprocal, or which index
+        # is the source. All three decide whether the matrix needs transposing.
+        from HarrisLabPlotting.directed import (
+            check_matrix_symmetry, format_symmetry_report,
+        )
+        if mat.shape[0] == mat.shape[1]:
+            rep = check_matrix_symmetry(mat)
+            console.print()
+            console.print(format_symmetry_report(rep))
+
+            # Stochastic detection: a transition matrix's row/column sums say
+            # which index is the source. Reported ONLY -- never transposed
+            # automatically, because a silent flip is the failure this is here
+            # to prevent.
+            off = mat.astype(float)
+            nonneg = bool(np.all(off >= 0))
+            row_s, col_s = off.sum(axis=1), off.sum(axis=0)
+            row_stoch = nonneg and bool(np.allclose(row_s, 1.0, atol=1e-6))
+            col_stoch = nonneg and bool(np.allclose(col_s, 1.0, atol=1e-6))
+            if row_stoch or col_stoch:
+                console.print()
+                if row_stoch and not col_stoch:
+                    print_info(
+                        "Rows sum to 1: this is a ROW-stochastic transition "
+                        "matrix, so row = current state = SOURCE. That already "
+                        "matches hlplot's convention -- do NOT transpose."
+                    )
+                elif col_stoch and not row_stoch:
+                    print_warning(
+                        "Columns sum to 1: this is a COLUMN-stochastic "
+                        "transition matrix, so column = SOURCE. hlplot expects "
+                        "row = source -- pass --matrix-orientation col-to-row, "
+                        "or run `hlplot utils transpose`."
+                    )
+                else:
+                    print_info(
+                        "Both rows and columns sum to 1 (doubly stochastic); "
+                        "the sums cannot tell you which index is the source."
+                    )
+            elif not rep["is_symmetric"]:
+                console.print()
+                print_info(
+                    "Asymmetric and not stochastic. hlplot reads M[i,j] as "
+                    "i -> j (row = source). If it came from SPM DCM, that is "
+                    "the opposite convention: use --matrix-orientation "
+                    "col-to-row."
+                )
+
     except Exception as e:
         print_error(f"Error reading matrix: {e}")
         raise click.Abort()
@@ -624,4 +674,80 @@ def check_alignment_cmd(coords, mesh, volume, matrix):
 
     except Exception as e:
         print_error(f"Error during alignment check: {e}")
+        raise click.Abort()
+
+
+@utils.command("transpose")
+@click.option("--matrix", "-m", required=True, type=click.Path(exists=True),
+              help="Matrix file to transpose (.csv, .npy, .txt, .edge, .mat).")
+@click.option("--output", "-o", required=True, type=click.Path(),
+              help="Where to write the transposed matrix (.csv or .npy).")
+def transpose_matrix(matrix, output):
+    """
+    Transpose a connectivity matrix, flipping its direction convention.
+
+    \b
+    hlplot reads M[i, j] as the connection i -> j (row = SOURCE, column =
+    TARGET) -- the numpy / networkx convention. Transpose when your matrix
+    uses the opposite convention:
+
+    \b
+      SPM DCM              A(i,j) is FROM j TO i  -> transpose
+      column-stochastic    columns sum to 1       -> transpose
+      row-stochastic       rows sum to 1          -> do NOT transpose
+      networkx / BCT       already i -> j         -> do NOT transpose
+
+    \b
+    The symmetry verdict is printed before and after so you can see the
+    transpose actually changed something. `hlplot utils info --matrix ...`
+    reports which convention a matrix appears to use.
+
+    \b
+    Examples:
+      hlplot utils transpose --matrix DCM_A.csv --output DCM_A_rowcol.csv
+      hlplot utils transpose -m probs.npy -o probs_T.npy
+    """
+    try:
+        import numpy as np
+        from pathlib import Path as _Path
+        from HarrisLabPlotting import load_connectivity_input
+        from HarrisLabPlotting.directed import (
+            check_matrix_symmetry, format_symmetry_report,
+        )
+
+        print_info(f"Loading matrix from {matrix}...")
+        mat = load_connectivity_input(matrix)
+        if mat.shape[0] != mat.shape[1]:
+            print_error(f"Matrix must be square to transpose meaningfully, "
+                        f"got {mat.shape[0]} x {mat.shape[1]}")
+            raise click.Abort()
+
+        console.print()
+        console.print("[bold]before[/bold]")
+        console.print(format_symmetry_report(check_matrix_symmetry(mat)))
+
+        out = mat.T.copy()
+
+        console.print()
+        console.print("[bold]after[/bold]")
+        console.print(format_symmetry_report(check_matrix_symmetry(out)))
+        if np.allclose(mat, out):
+            print_warning(
+                "The matrix is symmetric, so transposing changed nothing. "
+                "Direction conventions only matter for asymmetric matrices."
+            )
+
+        out_path = _Path(output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        if out_path.suffix.lower() == ".npy":
+            np.save(out_path, out)
+        else:
+            np.savetxt(out_path, out, delimiter=",")
+        print_success(f"Wrote transposed {out.shape[0]} x {out.shape[1]} "
+                      f"matrix to {out_path}")
+
+    except click.Abort:
+        raise
+    except Exception as e:
+        print_error(f"Error transposing matrix: {e}")
         raise click.Abort()

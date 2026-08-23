@@ -109,6 +109,31 @@ from .roi_coordinates import (
     load_matrix_replace_nan
 )
 
+# Directed (asymmetric) connectivity
+from .directed import (
+    ARROW_DEFAULTS,
+    apply_matrix_orientation,
+    arrowhead_size,
+    build_directed_edge_traces,
+    check_matrix_symmetry,
+    estimate_units_per_pixel,
+    extract_directed_edges,
+    format_symmetry_report,
+)
+
+# Volumetric (voxel map) plotting
+from .volume import (
+    COLORSCALES,
+    VOLUME_DEFAULTS,
+    create_brain_volume_plot,
+    get_colorscale,
+    load_volume_map,
+    load_volume_spec,
+    resolve_threshold,
+    resolve_smoothing_fwhm,
+    volume_preserving_level,
+)
+
 # Folder-combining helpers (BrainNet Viewer .edge / .node files)
 from .combine import (
     combine_edge_folder,
@@ -173,6 +198,27 @@ __all__ = [
     "map_coordinate",
     "load_and_clean_coordinates",
     "load_matrix_replace_nan",
+
+    # Directed connectivity
+    "ARROW_DEFAULTS",
+    "apply_matrix_orientation",
+    "arrowhead_size",
+    "build_directed_edge_traces",
+    "check_matrix_symmetry",
+    "estimate_units_per_pixel",
+    "extract_directed_edges",
+    "format_symmetry_report",
+
+    # Volume plotting
+    "COLORSCALES",
+    "VOLUME_DEFAULTS",
+    "create_brain_volume_plot",
+    "get_colorscale",
+    "load_volume_map",
+    "load_volume_spec",
+    "resolve_threshold",
+    "resolve_smoothing_fwhm",
+    "volume_preserving_level",
 
     # Folder combining
     "combine_edge_folder",
