@@ -2,8 +2,8 @@
 Brain Connectivity Visualization
 ================================
 Brain connectivity visualization functions with camera controls.
-Version 3 features: Camera controls, toggleable edges, scaled edge widths,
-                   vector node sizes, node metrics hover, edge-linked node hiding.
+Version 3 features: camera controls, toggleable edges, scaled edge widths,
+vector node sizes, node metrics hover, and edge-linked node hiding.
 """
 
 import pandas as pd
@@ -1540,6 +1540,8 @@ def create_brain_connectivity_plot(
     arrow_darken: float = ARROW_DEFAULTS['darken'],
     arrow_params: Optional[Dict] = None,
     no_html: bool = False,
+    volume_overlays=None,
+    volume_options: Optional[Dict] = None,
     _report_symmetry: bool = True,
 ):
     """
@@ -2176,6 +2178,19 @@ def create_brain_connectivity_plot(
         )
 
     fig.add_trace(go.Mesh3d(**mesh_kwargs))
+
+    # ----- voxel-map overlays -----------------------------------------
+    # Added straight after the brain shell so nodes and edges draw ON TOP of
+    # the cloud. Accepts a path, a list of paths, a list of dicts, or a spec
+    # file -- the same forms as `hlplot volume`.
+    if volume_overlays is not None:
+        from .volume import (
+            normalize_volume_specs, prepare_volume, build_volume_traces,
+        )
+        _vspecs = normalize_volume_specs(volume_overlays, volume_options or {})
+        _vprepared = [prepare_volume(_vs) for _vs in _vspecs]
+        for _vt in build_volume_traces(_vprepared, background=background_color):
+            fig.add_trace(_vt)
 
     _directed_counts = None
 
@@ -2905,6 +2920,8 @@ def create_brain_connectivity_plot_with_modularity(
     arrow_darken: float = ARROW_DEFAULTS['darken'],
     arrow_params: Optional[Dict] = None,
     no_html: bool = False,
+    volume_overlays=None,
+    volume_options: Optional[Dict] = None,
 ) -> Tuple[go.Figure, Dict]:
     """
     Create brain connectivity visualization with modularity-based node coloring.
@@ -3318,6 +3335,8 @@ def create_brain_connectivity_plot_with_modularity(
         # neither re-prints the symmetry report nor builds arrows we would
         # immediately delete.
         directed=False,
+        volume_overlays=volume_overlays,
+        volume_options=volume_options,
         matrix_orientation=matrix_orientation,
         symmetry_tol=symmetry_tol,
         no_html=True,

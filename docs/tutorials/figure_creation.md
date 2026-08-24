@@ -515,8 +515,6 @@ so they are easy to tweak. See also the
 
 ---
 
----
-
 ## 7. Directed networks
 
 An **asymmetric** matrix — DCM, Granger causality, transition probabilities —

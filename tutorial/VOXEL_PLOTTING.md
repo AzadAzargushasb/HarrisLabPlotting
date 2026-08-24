@@ -18,7 +18,7 @@ Allen surface.*
 ## Table of contents
 
 1. [Quick start](#1-quick-start)
-2. [⚠️ Same space, or nothing works](#2-️-same-space-or-nothing-works)
+2. [Same space, or nothing works](#2-same-space-or-nothing-works)
 3. [Thresholds](#3-thresholds)
 4. [Colours](#4-colours)
 5. [Smoothing — and why your map may need it](#5-smoothing--and-why-your-map-may-need-it)
@@ -88,7 +88,7 @@ range yourself with `--volume-range LOW,HIGH`.
 
 ---
 
-## 2. ⚠️ Same space, or nothing works
+## 2. Same space, or nothing works
 
 ### What "space" means
 
@@ -299,9 +299,9 @@ boundary inward and eats the cluster:
 
 | smoothing | peak after | voxels visible at a fixed 3.1 |
 |---|---|---|
-| none | 14.51 | 4,135 (100 %) |
-| `0.54,0.11,0.11` | 11.78 | 3,633 (88 %) |
-| isotropic `0.54` | 9.85 | 2,494 (**60 %**) |
+| none | 14.51 | 1,412,841 (100 %) |
+| `0.54,0.11,0.11` | 12.41 | 1,250,609 (88.5 %) |
+| isotropic `0.54` | 9.88 | 856,435 (**60.6 %**) |
 
 So when smoothing is applied, `hlplot` corrects the level: it counts the voxels
 above threshold in the *original* map, then picks the level on the *smoothed*

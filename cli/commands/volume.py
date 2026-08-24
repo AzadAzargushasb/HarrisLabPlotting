@@ -109,7 +109,7 @@ def _per_map(values, n, name):
                    "'preserve' (default) picks the level enclosing the same "
                    "voxel count as the unsmoothed suprathreshold region, "
                    "because blurring lowers the peak and a fixed level eats "
-                   "the cluster (up to 40%% of it). 'fixed' draws at the "
+                   "the cluster (up to 39%% of it). 'fixed' draws at the "
                    "literal threshold.")
 @click.option("--volume-crop/--no-volume-crop", default=True,
               help="Crop to the suprathreshold bounding box (+6 voxels) before "

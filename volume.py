@@ -415,11 +415,11 @@ def volume_preserving_level(original, smoothed, threshold):
     """The level on the SMOOTHED volume enclosing the same voxel count as
     ``|original| >= threshold``.
 
-    Blurring lowers the peak (14.51 -> 9.85 for an isotropic 0.54 mm kernel on
+    Blurring lowers the peak (14.51 -> 9.88 for an isotropic 0.54 mm kernel on
     the Fig 1 map), so drawing at the original threshold pulls the boundary
-    inward and eats the cluster -- 2,494 voxels shown instead of 4,135, a 40 %
-    loss. Matching the volume removes the resampling creases without shrinking
-    what the statistics actually found.
+    inward and eats the cluster -- 856,435 voxels shown instead of 1,412,841, a
+    39 % loss. Matching the volume removes the resampling creases without
+    shrinking what the statistics actually found.
     """
     target = int((np.abs(original) >= threshold).sum())
     if target == 0:

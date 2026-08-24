@@ -24,7 +24,7 @@ different template, that layer floats off on its own.
 
 Since the ROI coordinates here are generated *from an atlas in the same space as
 the mesh*, and the z-maps were warped into that space, all three agree. See
-[`VOXEL_PLOTTING.md` §2](VOXEL_PLOTTING.md#2-️-same-space-or-nothing-works)
+[`VOXEL_PLOTTING.md` §2](voxel_plotting.md#2-same-space-or-nothing-works)
 for how to get there, and check with:
 
 ```bash
@@ -145,7 +145,7 @@ Directed arcs are recomputed per panel under the default
 ## 7. Cost
 
 The voxel layer dominates: see
-[`VOXEL_PLOTTING.md` §10](VOXEL_PLOTTING.md#10-appendix-how-the-grid-works-and-what-it-costs).
+[`VOXEL_PLOTTING.md` §10](voxel_plotting.md#10-appendix-how-the-grid-works-and-what-it-costs).
 Use `--volume-step` and `--no-html` — a combined interactive file carries the
 whole grid *and* every edge trace.
 

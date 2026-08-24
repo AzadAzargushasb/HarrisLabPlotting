@@ -24,7 +24,7 @@ different template, that layer floats off on its own.
 
 Since the ROI coordinates here are generated *from an atlas in the same space as
 the mesh*, and the z-maps were warped into that space, all three agree. See
-[`VOXEL_PLOTTING.md` §2](VOXEL_PLOTTING.md#2-️-same-space-or-nothing-works)
+[`VOXEL_PLOTTING.md` §2](VOXEL_PLOTTING.md#2-same-space-or-nothing-works)
 for how to get there, and check with:
 
 ```bash

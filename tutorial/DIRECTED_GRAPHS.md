@@ -14,7 +14,7 @@ single plot**.
 
 ## Table of contents
 
-1. [⚠️ Read this first: which index is the source?](#1-️-read-this-first-which-index-is-the-source)
+1. [Read this first: which index is the source?](#1-read-this-first-which-index-is-the-source)
 2. [Quick start](#2-quick-start)
 3. [The symmetry report](#3-the-symmetry-report)
 4. [Reciprocal pairs and one-way edges](#4-reciprocal-pairs-and-one-way-edges)
@@ -29,7 +29,7 @@ All commands run from `test_files/tutorial_files`.
 
 ---
 
-## 1. ⚠️ Read this first: which index is the source?
+## 1. Read this first: which index is the source?
 
 This is the one thing that will silently ruin a figure, so it comes before
 anything else.
